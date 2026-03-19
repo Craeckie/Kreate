@@ -1,6 +1,5 @@
 package it.fast4x.rimusic.service.modern
 
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
@@ -123,8 +122,6 @@ class PlayerServiceModern:
     lateinit var connectivityObserver: AndroidConnectivityObserverLegacy
     private val isNetworkAvailable = MutableStateFlow(true)
     private val waitingForNetwork = MutableStateFlow(false)
-
-    private var notificationManager: NotificationManager? = null
 
     private var liveWallpaperEngine: LiveWallpaperEngine? = null
 
@@ -394,10 +391,6 @@ class PlayerServiceModern:
 
             listener.loudnessEnhancer?.release()
 
-            notificationManager?.cancel(NotificationId)
-            notificationManager?.cancelAll()
-            notificationManager = null
-
             coroutineScope.cancel()
 
             runBlocking { discord.logout() }
@@ -521,9 +514,6 @@ class PlayerServiceModern:
     }
 
     companion object {
-        const val NotificationId = 1001
-        const val NotificationChannelId = "default_channel_id"
-
         const val SleepTimerNotificationId = 1002
         const val SleepTimerNotificationChannelId = "sleep_timer_channel_id"
 
