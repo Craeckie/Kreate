@@ -4,11 +4,9 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
-import android.graphics.Color
 import android.media.audiofx.AudioEffect
 import android.os.Handler
 import android.os.Looper
-import androidx.annotation.MainThread
 import androidx.compose.runtime.getValue
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -43,7 +41,6 @@ import it.fast4x.innertube.Innertube
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.MainActivity
 import it.fast4x.rimusic.extensions.connectivity.AndroidConnectivityObserverLegacy
-import it.fast4x.rimusic.service.BitmapProvider
 import it.fast4x.rimusic.service.MyDownloadHelper
 import it.fast4x.rimusic.service.MyDownloadService
 import it.fast4x.rimusic.utils.AppLifecycleTracker
@@ -74,7 +71,6 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.seconds
 
 
@@ -102,7 +98,6 @@ class PlayerServiceModern:
     private lateinit var mediaSession: MediaLibrarySession
     private var mediaLibrarySessionCallback: MediaLibrarySessionCallback =
         MediaLibrarySessionCallback(this)
-    private lateinit var bitmapProvider: BitmapProvider
     private lateinit var downloadListener: DownloadManager.Listener
     private lateinit var audioHandler: AudioHandler
 
@@ -146,7 +141,6 @@ class PlayerServiceModern:
         listener.updateMediaControl( this, player )
 
         if( mediaItem != null ) {
-            updateBitmap()
             updateDownloadedState()
 
             if( !Preferences.isLoggedInToDiscord() )
@@ -206,17 +200,6 @@ class PlayerServiceModern:
         DefaultMediaNotificationProvider(this)
             .apply { setSmallIcon( R.drawable.app_icon_monochrome ) }
             .also( ::setMediaNotificationProvider )
-
-        runCatching {
-            bitmapProvider = BitmapProvider(
-                bitmapSize = (512 * resources.displayMetrics.density).roundToInt(),
-                colorProvider = { isSystemInDarkMode ->
-                    if (isSystemInDarkMode) Color.BLACK else Color.WHITE
-                }
-            )
-        }.onFailure {
-            logger.e( it ) { "Failed init bitmap provider" }
-        }
 
         MyDownloadHelper.instance = this.downloadHelper
 
@@ -414,18 +397,6 @@ class PlayerServiceModern:
                 else if ( newValue > 0 && currentValue == 0 )
                     registerLiveWallpaperEngine()
             }
-        }
-    }
-
-    @MainThread
-    private fun updateBitmap() {
-        with(bitmapProvider) {
-            var newUriForLoad = player.currentMediaItem?.mediaMetadata?.artworkUri
-            if(lastUri == player.currentMediaItem?.mediaMetadata?.artworkUri) {
-                newUriForLoad = null
-            }
-
-            load(newUriForLoad) {}
         }
     }
 
