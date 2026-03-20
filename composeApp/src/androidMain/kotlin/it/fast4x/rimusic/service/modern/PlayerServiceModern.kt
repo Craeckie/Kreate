@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.audiofx.AudioEffect
 import android.os.Handler
@@ -74,8 +73,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import me.knighthat.discord.Discord
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
@@ -84,7 +81,8 @@ import kotlin.time.Duration.Companion.seconds
 
 val MediaItem.isLocal get() = localConfiguration?.uri?.isLocalFile() ?: false
 
-@UnstableApi
+
+@androidx.annotation.OptIn(UnstableApi::class)
 class PlayerServiceModern:
     MediaLibraryService(),
     PlaybackStatsListener.Callback,
@@ -435,29 +433,17 @@ class PlayerServiceModern:
 
     @MainThread
     fun updateWidgets() {
-        val status = Triple(
-            player.mediaMetadata.title.toString(),
-            player.mediaMetadata.artist.toString(),
-            player.isPlaying
-        )
-
+        val isPlaying = player.isPlaying
+        val metadata = player.currentMediaItem?.mediaMetadata ?: return
         val actions = Triple(
-            if( status.third ) player::pause else player::play,
+            if( isPlaying ) player::pause else player::play,
             player::seekToPrevious,
             player::seekToNext
         )
 
-        CoroutineScope( Dispatchers.IO ).launch {
-            // Save bitmap to file
-            val file = File( cacheDir, "widget_thumbnail.png" )
-            FileOutputStream(file).use { outStream ->
-                bitmapProvider.bitmap.compress( Bitmap.CompressFormat.PNG, 50, outStream )
-            }
-
-            withContext( Dispatchers.Default ) {
-                Widget.Vertical.update( applicationContext, actions, status, file )
-                Widget.Horizontal.update( applicationContext, actions, status, file )
-            }
+        coroutineScope.launch( Dispatchers.Default ) {
+            Widget.Vertical.update( this@PlayerServiceModern, actions, isPlaying, metadata )
+            Widget.Horizontal.update( this@PlayerServiceModern, actions, isPlaying, metadata )
         }
     }
 
@@ -523,5 +509,4 @@ class PlayerServiceModern:
 
         const val CACHE_DIRNAME = "exo_cache"
     }
-
 }
