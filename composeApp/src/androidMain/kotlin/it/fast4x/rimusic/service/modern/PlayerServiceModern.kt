@@ -210,19 +210,19 @@ class PlayerServiceModern:
         preferences.registerOnSharedPreferenceChangeListener(audioHandler)
 
         // Build the media library session
-        mediaSession =
-            MediaLibrarySession.Builder(this, player, mediaLibrarySessionCallback)
-                .setSessionActivity(
-                    PendingIntent.getActivity(
-                        this,
-                        0,
-                        Intent(this, MainActivity::class.java)
-                            .putExtra("expandPlayerBottomSheet", true),
-                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                    )
+        mediaSession = MediaLibrarySession
+            .Builder(this, player.toForwardingPlayer(), mediaLibrarySessionCallback)
+            .setSessionActivity(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java)
+                        .putExtra("expandPlayerBottomSheet", true),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
-                .setBitmapLoader( CoilBitmapLoader(coroutineScope) )
-                .build()
+            )
+            .setBitmapLoader( CoilBitmapLoader(coroutineScope) )
+            .build()
 
         listener = ExoPlayerListener(
             player,
