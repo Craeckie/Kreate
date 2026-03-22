@@ -467,6 +467,9 @@ sealed class Preferences<T>(
         val PLAYER_ROTATING_ALBUM_COVER by lazy {
             Boolean( preferences, Key.PLAYER_ROTATING_ALBUM_COVER, "rotatingAlbumCover", false )
         }
+        val PLAYER_SHUFFLE by lazy {
+            Boolean(preferences, Key.PLAYER_SHUFFLE, "", false)
+        }
         //</editor-fold>
         //<editor-fold defaultstate="collapsed" desc="Cache">
         val EXO_CACHE_LOCATION by lazy {
@@ -1811,6 +1814,7 @@ sealed class Preferences<T>(
         const val PLAYER_TOP_PADDING = "PlayerTopPadding"
         const val PLAYER_EXTRA_SPACE = "PlayerExtraSpace"
         const val PLAYER_ROTATING_ALBUM_COVER = "PlayerRotatingAlbumCover"
+        const val PLAYER_SHUFFLE = "PlayerShuffledEnabled"
         const val EXO_CACHE_LOCATION = "ExoCacheLocation"
         const val IMAGE_CACHE_SIZE = "ThumbnailCacheSizeBytes"
         const val EXO_CACHE_SIZE = "SongCacheSizeBytes"
