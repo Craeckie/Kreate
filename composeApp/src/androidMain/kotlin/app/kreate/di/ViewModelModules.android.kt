@@ -3,6 +3,7 @@ package app.kreate.di
 import app.kreate.android.viewmodel.LocalPlaylistViewModel
 import app.kreate.android.viewmodel.YouTubePlaylistViewModel
 import app.kreate.android.viewmodel.YoutubeArtistViewModel
+import app.kreate.android.viewmodel.home.OnDeviceSongsViewModel
 import app.kreate.android.viewmodel.player.ActionBarNextSongsViewModel
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModel
@@ -14,6 +15,7 @@ actual val viewModelModule: Module = module {
     viewModelOf( ::YoutubeArtistViewModel )
     viewModelOf( ::YouTubePlaylistViewModel )
     viewModelOf( ::LocalPlaylistViewModel )
+    viewModelOf( ::OnDeviceSongsViewModel )
 
     viewModel { params ->
         ActionBarNextSongsViewModel( params.get() )
