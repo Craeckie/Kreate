@@ -60,6 +60,8 @@ class DownloadHelperImpl(
         private const val NUM_PARALLEL_DOWNLOADS = 3
         private const val NUM_RETRIES = 2
         private const val EXECUTOR_NAME = "DownloadHelper-Executor-Scope"
+        private const val DB_INIT_MAX_RETRIES = 5
+        private const val DB_INIT_BACKOFF_MS = 200L
     }
 
     private val executor = Executors.newCachedThreadPool()
@@ -104,11 +106,32 @@ class DownloadHelperImpl(
 
     init {
         val results = mutableMapOf<String, Download>()
-        val cursor = downloadManager.downloadIndex.getDownloads()
-        while ( cursor.moveToNext() ) {
-            results[cursor.download.request.id] = cursor.download
+
+        // Retry with backoff to handle transient SQLITE_BUSY during
+        // startup when other components are still initializing the DB.
+        var lastException: Exception? = null
+        for (attempt in 1..DB_INIT_MAX_RETRIES) {
+            try {
+                val cursor = downloadManager.downloadIndex.getDownloads()
+                try {
+                    while (cursor.moveToNext()) {
+                        results[cursor.download.request.id] = cursor.download
+                    }
+                } finally {
+                    cursor.close()
+                }
+                lastException = null
+                break
+            } catch (e: android.database.sqlite.SQLiteDatabaseLockedException) {
+                lastException = e
+                Logger.w("DownloadHelperImpl") { "DB locked during init (attempt $attempt/$DB_INIT_MAX_RETRIES), retrying..." }
+                Thread.sleep(DB_INIT_BACKOFF_MS * attempt)
+            }
         }
-        downloads = MutableStateFlow(results)
+        if (lastException != null) {
+            Logger.e(lastException, "DownloadHelperImpl") { "Failed to read download index after $DB_INIT_MAX_RETRIES attempts" }
+        }
+        downloads = MutableStateFlow(results) // Proceed with whatever we got (possibly empty)
     }
 
     @Synchronized
