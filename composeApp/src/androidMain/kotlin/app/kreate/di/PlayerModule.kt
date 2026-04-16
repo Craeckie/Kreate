@@ -19,6 +19,7 @@ import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -483,8 +484,9 @@ val playerModule = module {
     single<DownloadHelper> {
         val dataSourceFactory: ResolvingDataSource.Factory = get(DatasourceType.DOWNLOADER)
         val downloadCache: Cache = get(CacheType.DOWNLOAD)
+        val dbProvider: StandaloneDatabaseProvider = get()
 
-        DownloadHelperImpl(dataSourceFactory, get(), downloadCache)
+        DownloadHelperImpl(dataSourceFactory, get(), downloadCache, dbProvider)
     }
 }
 

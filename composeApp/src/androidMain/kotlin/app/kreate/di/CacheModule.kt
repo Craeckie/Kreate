@@ -22,9 +22,10 @@ private const val DOWNLOAD_CACHE_DIRNAME = "exo_downloads"
 
 @OptIn(UnstableApi::class)
 private fun initCache(
-    context: Context,
+    databaseProvider: StandaloneDatabaseProvider,
     preferences: Preferences.Long,
-    cacheDirName: String
+    cacheDirName: String,
+    context: Context
 ): Cache {
     val fromSetting by preferences
 
@@ -50,18 +51,29 @@ private fun initCache(
     // Ensure this location exists
     cacheDir.mkdirs()
 
-    return SimpleCache( cacheDir, cacheEvictor, StandaloneDatabaseProvider(context) )
+    return SimpleCache( cacheDir, cacheEvictor, databaseProvider )
 }
 
+@OptIn(UnstableApi::class)
 val cacheModule = module {
+    // Single shared StandaloneDatabaseProvider to avoid SQLITE_BUSY
+    // lock contention between SimpleCache and DownloadManager.
+    // All ExoPlayer components that need DB access should inject
+    // this instance instead of creating their own.
+    single {
+        StandaloneDatabaseProvider(get<Context>())
+    }
+
     single( CacheType.CACHE ) {
         val context: Context = get()
-        initCache( context, Preferences.EXO_CACHE_SIZE, CACHE_DIRNAME )
+        val dbProvider: StandaloneDatabaseProvider = get()
+        initCache( dbProvider, Preferences.EXO_CACHE_SIZE, CACHE_DIRNAME, context )
     }
 
     single( CacheType.DOWNLOAD ) {
         val context: Context = get()
-        initCache( context, Preferences.EXO_DOWNLOAD_SIZE, DOWNLOAD_CACHE_DIRNAME )
+        val dbProvider: StandaloneDatabaseProvider = get()
+        initCache( dbProvider, Preferences.EXO_DOWNLOAD_SIZE, DOWNLOAD_CACHE_DIRNAME, context )
     }
 }
 
