@@ -8,7 +8,7 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 
-val APP_NAME = "Kreate"
+val APP_NAME = "Kreate Fixed"
 
 private fun String.sha256(): String {
     val digest = MessageDigest.getInstance( "SHA-256" )
@@ -182,6 +182,7 @@ android {
 
     defaultConfig {
         applicationId = "me.knighthat.kreate"
+        applicationIdSuffix = ".fix"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.compileSdk.get().toInt()
 
