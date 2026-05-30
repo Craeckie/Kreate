@@ -1,0 +1,4 @@
+Fixes:
+- Stream URL cache expiry and deobfuscation fallback throttling
+- Multiple conflicting SQLite connections
+- Queue isLocal import after package move

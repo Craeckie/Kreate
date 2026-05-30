@@ -5,6 +5,12 @@ on:
     # Gotta wait until contributors.json is updated
     - cron: '0 3 1,14 * *'  # 3AM on the 1st and 14th of every month
 
+  push:
+    branches:
+      - main
+    paths:
+      - 'gradle/libs.versions.toml'
+
   # Allow manual trigger
   workflow_dispatch:
 
@@ -121,7 +127,7 @@ jobs:
       STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
       KEY_PASSWORD: ${{ secrets.PROD_KEY_PASSWORD }}
       OFFICIAL_BUILD_PASSPHRASE: ${{ secrets.OFFICIAL_BUILD_PASSPHRASE }}
-      KEYSTORE_PATH: ${{ vars.KEYSTORE_PATH }}
+      KEYSTORE_PATH: ${{ vars.KEYSTORE_PATH || '/home/runner/.ignore.d/keystores' }}
       KEYSTORE_FILENAME: production.jks
 
     strategy:
