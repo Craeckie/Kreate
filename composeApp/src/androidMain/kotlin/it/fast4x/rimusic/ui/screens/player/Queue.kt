@@ -73,7 +73,7 @@ import it.fast4x.compose.reordering.reorder
 import it.fast4x.rimusic.colorPalette
 import it.fast4x.rimusic.enums.QueueLoopType
 import it.fast4x.rimusic.enums.QueueType
-import it.fast4x.rimusic.service.modern.isLocal
+import app.kreate.android.utils.isLocal
 import it.fast4x.rimusic.typography
 import it.fast4x.rimusic.ui.components.LocalMenuState
 import it.fast4x.rimusic.ui.components.SwipeableQueueItem
