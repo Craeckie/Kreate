@@ -14,6 +14,11 @@
 ###      BINS
 **bin/
 
+###      LOCAL RELEASE ARTIFACTS
+*.apk
+*.idsig
+log-findings.md
+
 ###      ANDROID
 **APK keystore/
 .DS_Store
