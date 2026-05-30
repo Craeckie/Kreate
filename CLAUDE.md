@@ -47,6 +47,17 @@ The build matrix is **3 platform flavors × 5 arch flavors × 2 env flavors × 4
 
 The release notes copy task (`copyReleaseNote`) runs automatically before any non-debug build; it reads `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 
+### Creating a release
+
+Pushing a version bump to `gradle/libs.versions.toml` on `main` triggers the `build-all-flavors-weekly.yml` CI workflow, which builds all APK flavors and publishes a GitHub release.
+
+Steps:
+1. Bump `versionCode` (integer, increment by 1) and `versionName` (semver) in `gradle/libs.versions.toml`.
+2. Create `fastlane/metadata/android/en-US/changelogs/<newVersionCode>.txt` with user-facing release notes (see existing files for format).
+3. Commit both files and push to `main` — CI triggers automatically.
+
+CI will fail fast if the changelog file is missing or the new version matches the latest GitHub release tag.
+
 Submodules `modules/innertube` and `modules/kizzy` must be checked out (`git submodule update --init --recursive`) — they're separate Gradle projects included via `settings.gradle.kts`.
 
 ## Architecture overview

@@ -1,0 +1,3 @@
+Fixes:
+- Playback stops around 1 minute (VR-first stream resolution, no PO token needed)
+- Songs that 403 mid-play now auto-retry with a fresh stream URL

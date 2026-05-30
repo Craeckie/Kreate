@@ -196,10 +196,10 @@ android {
 
     signingConfigs {
         create( "production" ) {
-            storeFile = file("$rootDir/.ignore.d/keystores/production.jks")
-            keyAlias = "kreate"
-            storePassword = System.getenv( "STORE_PASSWORD" )
-            keyPassword = System.getenv( "KEY_PASSWORD" )
+            storeFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/.ignore.d/keystores/production.jks")
+            keyAlias = System.getenv("KEY_ALIAS") ?: "kreate"
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyPassword = System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
         }
         create( "nightly" ) {
             storeFile = file("$rootDir/.ignore.d/keystores/nightly.jks")
