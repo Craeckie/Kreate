@@ -225,6 +225,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
         }
         create( "uncompressed" ) {
             // App's properties
@@ -366,6 +367,19 @@ android {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    packaging {
+        jniLibs {
+            keepDebugSymbols += "**/*.so"
+        }
+    }
+}
+
+// NDK not required; skip tasks that fail without it
+tasks.configureEach {
+    if (name.startsWith("extractNativeDebugMetadata")) {
+        onlyIf { false }
     }
 }
 
