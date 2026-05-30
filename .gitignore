@@ -1,3 +1,6 @@
+NewPipeExtractor/
+yt-dlp/
+
 /captures
 .externalNativeBuild
 .cxx

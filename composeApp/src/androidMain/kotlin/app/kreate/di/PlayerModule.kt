@@ -84,7 +84,6 @@ import kotlin.time.Duration.Companion.seconds
 
 
 private const val CHUNK_LENGTH = 512 * 1024L     // 512KB
-private const val ONE_HOUR = 3_600_000L
 private const val METHOD_ANDROID = 1
 private const val METHOD_IOS = 2
 
@@ -303,8 +302,9 @@ private suspend fun makeStreamCache(
             upsertSongFormat( songId, format )
 
             val contentLength = format.contentLength?.toLong() ?: CHUNK_LENGTH
-            val playableUrl = response.streamingData?.expiresInSeconds?.toLong() ?: ONE_HOUR
-            StreamCache(cpn, contentLength, streamUrl, playableUrl)
+            val expiresInSeconds = response.streamingData?.expiresInSeconds?.toLong() ?: 3_600L
+            val expiredAtMs = System.currentTimeMillis() + expiresInSeconds * 1_000L
+            StreamCache(cpn, contentLength, streamUrl, expiredAtMs)
         } else
             // Try again with IOS setup
             makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
@@ -381,7 +381,12 @@ private fun resolver( queryInChunks: Boolean, vararg cashes: Cache ) =
             dataSpec
         } else {
             val cache = getPlayableUrl( songId )
-            val deobUrl = YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated( songId, cache.playableUrl )
+            val deobUrl = try {
+                YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated( songId, cache.playableUrl )
+            } catch( e: Exception ) {
+                logger.w( "Throttling parameter deobfuscation failed for $songId, using raw URL", e )
+                cache.playableUrl
+            }
             val uri = "$deobUrl&cpn=${cache.cpn}".toUri()
             val length = CHUNK_LENGTH.takeIf { queryInChunks } ?: cache.contentLength
 
