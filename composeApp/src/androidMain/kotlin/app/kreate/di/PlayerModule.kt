@@ -26,7 +26,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import app.kreate.android.Preferences
 import app.kreate.android.R
+import com.dd3boh.outertune.utils.potoken.PoTokenGenerator
 import app.kreate.android.service.DownloadHelper
+import app.kreate.android.service.innertube.AndroidVrStreamHelper
 import app.kreate.android.service.player.ErrorHandlingPolicy
 import app.kreate.android.service.player.StatefulPlayer
 import app.kreate.android.service.player.StatefulPlayerImpl
@@ -84,8 +86,43 @@ import kotlin.time.Duration.Companion.seconds
 
 
 private const val CHUNK_LENGTH = 512 * 1024L     // 512KB
+private const val METHOD_ANDROID_VR = 0
 private const val METHOD_ANDROID = 1
 private const val METHOD_IOS = 2
+private const val METHOD_WEB = 3
+
+/** Human-readable name for a `METHOD_*` constant, for diagnostic logs. */
+private fun methodName( method: Int ): String = when( method ) {
+    METHOD_ANDROID_VR -> "ANDROID_VR"
+    METHOD_ANDROID    -> "ANDROID_REEL"
+    METHOD_IOS        -> "IOS"
+    METHOD_WEB        -> "WEB"
+    else              -> "UNKNOWN($method)"
+}
+
+/**
+ * Next client to try in the fallback chain `ANDROID_VR → ANDROID_REEL → WEB → IOS`.
+ *
+ * Returns the same [method] for the terminal client ([METHOD_IOS]) to signal the
+ * chain is exhausted. ANDROID_VR is the preferred pot-free path; the legacy clients
+ * remain as fallback (notably VR cannot serve "made for kids" videos).
+ */
+private fun nextFallbackMethod( method: Int ): Int = when( method ) {
+    METHOD_ANDROID_VR -> METHOD_ANDROID
+    METHOD_ANDROID    -> METHOD_WEB
+    METHOD_WEB        -> METHOD_IOS
+    else              -> METHOD_IOS    // terminal
+}
+
+/**
+ * Condense a (signed) stream url into the few params worth logging without
+ * leaking the full url: client, itag, expiry and whether a PO token is attached.
+ */
+private fun summarizeStreamUrl( url: String ): String =
+    with( parseQueryString( url.substringAfter( '?', "" ) ) ) {
+        "c=${this["c"]} itag=${this["itag"]} expire=${this["expire"]} " +
+        "pot=${if( contains( "pot" ) ) "yes" else "no"}"
+    }
 
 /**
  * Acts as a lock to keep [upsertSongFormat] from starting before
@@ -108,6 +145,7 @@ private val jsonParser =
     }
 private val client: HttpClient by inject(HttpClient::class.java)
 private val context: Context by inject(Context::class.java)
+private val poTokenGenerator: PoTokenGenerator by inject(PoTokenGenerator::class.java)
 private val logger = Logger.withTag( "dataspec" )
 
 //<editor-fold desc="Database handlers">
@@ -260,11 +298,9 @@ private suspend fun makeStreamCache(
     songId: String,
     isConnectionMetered: Boolean,
     audioQuality: AudioQualityFormat,
-    method: Int = METHOD_ANDROID
+    method: Int = METHOD_ANDROID_VR
 ): StreamCache {
-    logger.v { "Getting online stream url for \"$songId\" with method $method" }
-    logger.d { "Is connection metered: $isConnectionMetered" }
-    logger.d { "Audio format: $audioQuality" }
+    logger.i { "[${methodName( method )}] resolving stream for \"$songId\" (metered=$isConnectionMetered, quality=$audioQuality)" }
 
     val cpn = CharUtils.randomString( 12 )
     try {
@@ -272,10 +308,28 @@ private suspend fun makeStreamCache(
         val (gl, hl) = with( CURRENT_LOCALE ) {
             ContentCountry(regionCode) to Localization(languageCode)
         }
-        val jsonResponse = if( method == METHOD_ANDROID )
-            YoutubeStreamHelper.getAndroidReelPlayerResponse( gl, hl, songId, cpn )
-        else
-            YoutubeStreamHelper.getIosPlayerResponse( gl, hl, songId, cpn, null )
+        var webStreamingPoToken: String? = null
+        val jsonResponse = when( method ) {
+            METHOD_ANDROID_VR -> AndroidVrStreamHelper.getAndroidVrPlayerResponse( gl, hl, songId, cpn )
+            METHOD_ANDROID -> YoutubeStreamHelper.getAndroidReelPlayerResponse( gl, hl, songId, cpn )
+            METHOD_WEB -> {
+                val localResult = poTokenGenerator.getWebClientPoToken(songId)
+                    ?: return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
+                val visitorData = poTokenGenerator.sessionIdentifier
+                    ?: Preferences.YOUTUBE_VISITOR_DATA.value
+                val npResult = org.schabi.newpipe.extractor.services.youtube.PoTokenResult(
+                    visitorData,
+                    localResult.playerRequestPoToken,
+                    localResult.streamingDataPoToken
+                )
+                val sigTs = runCatching {
+                    YoutubeJavaScriptPlayerManager.getSignatureTimestamp(songId)
+                }.getOrNull() ?: 0
+                webStreamingPoToken = localResult.streamingDataPoToken
+                YoutubeStreamHelper.getWebEmbeddedPlayerResponse( hl, gl, songId, cpn, npResult, sigTs )
+            }
+            else -> YoutubeStreamHelper.getIosPlayerResponse( gl, hl, songId, cpn, null )
+        }
         val serializerClass = Class.forName("me.knighthat.internal.response.PlayerResponseImpl$\$serializer")
         val serializerInstance = serializerClass.getDeclaredField("INSTANCE").get(null) as KSerializer<*>
         val response = jsonParser.decodeFromString(
@@ -287,7 +341,7 @@ private suspend fun makeStreamCache(
             "playabilityStatus is null!"
         }
         when( playabilityStatus.status ) {
-            "OK"                -> logger.d { "playabilityStatus is OK" }
+            "OK"                -> logger.d { "[${methodName( method )}] playabilityStatus OK for $songId" }
             "LOGIN_REQUIRED"    -> throw LoginRequiredException(playabilityStatus.reason)
             else                -> throw UnplayableException(playabilityStatus.reason)
         }
@@ -296,21 +350,33 @@ private suspend fun makeStreamCache(
         val format = extractFormat( response.streamingData, audioQuality, isConnectionMetered )
         val streamUrl = extractStreamUrl( songId, format )
         val validateResult = validateStreamUrl( streamUrl )
+        logger.i {
+            "[${methodName( method )}] $songId itag=${format.itag} mime=${format.mimeType} " +
+            "headOk=$validateResult ${summarizeStreamUrl( streamUrl )}"
+        }
         //</editor-fold>
 
-        return if( validateResult ) {
-            upsertSongFormat( songId, format )
+        if( !validateResult ) {
+            // Treat a failed HEAD probe like any other resolution failure so the
+            // single catch block below drives the fallback chain (avoids running
+            // the chain twice via recursion inside this try).
+            logger.w { "[${methodName( method )}] stream url failed HEAD validation for $songId" }
+            throw PlayableFormatNotFoundException()
+        }
 
-            val contentLength = format.contentLength?.toLong() ?: CHUNK_LENGTH
-            val expiresInSeconds = response.streamingData?.expiresInSeconds?.toLong() ?: 3_600L
-            val expiredAtMs = System.currentTimeMillis() + expiresInSeconds * 1_000L
-            StreamCache(cpn, contentLength, streamUrl, expiredAtMs)
-        } else
-            // Try again with IOS setup
-            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
+        upsertSongFormat( songId, format )
+
+        val contentLength = format.contentLength?.toLong() ?: CHUNK_LENGTH
+        val expiresInSeconds = response.streamingData?.expiresInSeconds?.toLong() ?: 3_600L
+        val expiredAtMs = System.currentTimeMillis() + expiresInSeconds * 1_000L
+        return StreamCache(cpn, contentLength, streamUrl, expiredAtMs, webStreamingPoToken)
     } catch( e: Exception ) {
-        if( method == METHOD_ANDROID )
-            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
+        val next = nextFallbackMethod( method )
+        if( next != method ) {
+            logger.w( "[${methodName( method )}] failed (${e.javaClass.simpleName}), falling back to ${methodName( next )} for $songId", e )
+            return makeStreamCache( songId, isConnectionMetered, audioQuality, next )
+        }
+        logger.w( "[${methodName( method )}] failed (${e.javaClass.simpleName}); fallback chain exhausted for $songId", e )
 
         when( e ) {
             is UnknownHostException,
@@ -384,11 +450,15 @@ private fun resolver( queryInChunks: Boolean, vararg cashes: Cache ) =
             val deobUrl = try {
                 YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated( songId, cache.playableUrl )
             } catch( e: Exception ) {
-                logger.w( "Throttling parameter deobfuscation failed for $songId, using raw URL", e )
-                cache.playableUrl
+                logger.w( "Throttling parameter deobfuscation failed for $songId, clearing cache and rethrowing", e )
+                clearCachedStreamUrlOf(songId)
+                throw e
             }
-            val uri = "$deobUrl&cpn=${cache.cpn}".toUri()
+            val potSuffix = cache.streamingPoToken?.let { "&pot=$it" } ?: ""
+            val uri = "$deobUrl&cpn=${cache.cpn}$potSuffix".toUri()
             val length = CHUNK_LENGTH.takeIf { queryInChunks } ?: cache.contentLength
+
+            logger.i { "resolved $songId -> cpn=${cache.cpn} ${summarizeStreamUrl( uri.toString() )}" }
 
             dataSpec.withUri( uri ).subrange( dataSpec.uriPositionOffset, length )
         }
@@ -411,6 +481,8 @@ fun clearCachedStreamUrlOf( songId: String ): Boolean =
     cachedStreamUrl.remove( songId ) != null
 
 val playerModule = module {
+    single { PoTokenGenerator() }
+
     // [DefaultDataSource.Factory] with [context] is required to read
     // data from local files.
     // Normal HTTP requests are handled by [OkHttpDataSource.Factory]
@@ -505,5 +577,6 @@ private data class StreamCache(
     val cpn: String,
     val contentLength: Long,
     val playableUrl: String,
-    val expiredTimeMillis: Long
+    val expiredTimeMillis: Long,
+    val streamingPoToken: String? = null
 )

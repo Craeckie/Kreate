@@ -34,8 +34,10 @@ import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
+import app.kreate.di.clearCachedStreamUrlOf
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.service.PlayerEventUpdateDiscord
@@ -143,6 +145,7 @@ class StatefulPlayerImpl(
     //</editor-fold>
     private var errorTimestamp = 0L
     private var lastErrorMessage = ""
+    private val retried403Songs = mutableSetOf<String>()
 
     override val currentMediaItemState = _currentMediaItemState.asStateFlow()
     override val currentTimelineState = _currentTimelineState.asStateFlow()
@@ -805,6 +808,21 @@ class StatefulPlayerImpl(
     override fun onPlayerError( error: PlaybackException ) {
         val rootCause = traverseErrorStack( error )
 
+        if (rootCause is HttpDataSource.InvalidResponseCodeException
+            && rootCause.responseCode == 403) {
+            val songId = currentMediaItem?.mediaId
+            if (songId != null && retried403Songs.add(songId)) {
+                logger.i { "Got HTTP 403 for $songId; clearing cached stream url and re-resolving" }
+                clearCachedStreamUrlOf(songId)
+                seekToDefaultPosition()
+                prepare()
+                return
+            }
+            logger.w { "HTTP 403 for ${currentMediaItem?.mediaId} persisted after re-resolution" }
+        } else if (rootCause is HttpDataSource.InvalidResponseCodeException) {
+            logger.w { "Playback HTTP ${rootCause.responseCode} for ${currentMediaItem?.mediaId}" }
+        }
+
         when( rootCause ) {
             is PlayableFormatNotFoundException -> context.getString( R.string.error_couldn_t_find_a_playable_audio_format )
             is NoInternetException -> context.getString( R.string.no_connection )
@@ -813,10 +831,13 @@ class StatefulPlayerImpl(
             else -> rootCause.message ?: context.getString( R.string.error_unknown )
         }.also( ::printErrorMessage )
 
-        // TODO: Add additional recovery step if type of error allows it
-
         if ( Preferences.PLAYBACK_SKIP_ON_ERROR.value && hasNextMediaItem() )
             playNext()
+    }
+
+    override fun onPlaybackStateChanged(playbackState: Int) {
+        if (playbackState == Player.STATE_READY)
+            retried403Songs.clear()
     }
 
     override fun onEvents( player: Player, events: Player.Events ) {

@@ -15,6 +15,7 @@ class PoTokenGenerator {
 
     private object WebPoTokenGenLock
     private var webPoTokenSessionIdentifier: String? = null
+    internal val sessionIdentifier get() = webPoTokenSessionIdentifier
     private var webPoTokenStreamingPot: String? = null
     private var webPoTokenGenerator: PoTokenWebView? = null
 
