@@ -7,6 +7,7 @@ import android.net.NetworkRequest
 import androidx.core.content.getSystemService
 import androidx.lifecycle.ProcessLifecycleOwner
 import app.kreate.android.Preferences
+import app.kreate.android.coil3.ThumbnailSizeInterceptor
 import app.kreate.android.drawable.AppIcon
 import app.kreate.android.service.NewPipeDownloaderImpl
 import app.kreate.android.service.innertube.InnertubeProvider
@@ -100,6 +101,10 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
                                   null
                           }
                           .components {
+                              // Resize Google thumbnail URLs to the on-screen target
+                              // size before fetching — must run before the network
+                              // fetcher so the smaller image is what gets downloaded.
+                              add( ThumbnailSizeInterceptor() )
                               add(
                                   KtorNetworkFetcherFactory(client)
                               )

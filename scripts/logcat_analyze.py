@@ -58,6 +58,16 @@ PATTERNS = [
     ("ktor_400",           re.compile(r"ClientRequestException.+invalid: 400")),
     ("exception",          re.compile(r"\[PLAYBACK_DEBUG\] EXCEPTION during playback for videoId=(\S+): (.+)")),
     ("success_debug",      re.compile(r"\[PLAYBACK_DEBUG\] SUCCESS: Got playback data")),
+    # Song-info (metadata) parse failures — songBasicInfo / upsertSongInfo path
+    ("songinfo_upsert_fail", re.compile(r"failed to upsert (\S+?)'?s? information to database")),
+    ("missing_field",      re.compile(r"MissingFieldException: Field '(\S+)' is required")),
+    # Thumbnail / image loading
+    ("image_null",         re.compile(r"RealImageLoader:.*Unable to create a fetcher that supports: null")),
+    ("thumb_oversized",    re.compile(r"=w\d+-h\d+\S*-w900-h900")),
+    # Benign device-capability noise
+    ("reverb_fail",        re.compile(r"Reverb init failed|AudioEffect.*initCheck failed")),
+    # UI crashes
+    ("changelog_crash",    re.compile(r"ChangelogsDialog.*(?:IndexOutOfBounds|IndexOutOfBoundsException)")),
 ]
 
 
@@ -108,6 +118,36 @@ def analyze(lines, filter_video=None, verbose=False):
     if counts["unavailable"]:
         issues.append(f"  [ERROR] 'This video is unavailable' ({counts['unavailable']}x) "
                       f"— all clients exhausted (metrolist YTPlayerUtils path failure)")
+
+    if counts["songinfo_upsert_fail"]:
+        fields = sorted({g[0] for _, t, g, _ in events if t == "missing_field"})
+        if fields:
+            field_str = ", ".join(fields)
+            issues.append(f"  [ERROR] songBasicInfo parse failed (missing field {field_str}) "
+                          f"({counts['songinfo_upsert_fail']}x) — a now-required-by-our-schema "
+                          f"field is absent from YouTube's response; song still plays but metadata "
+                          f"never lands in the DB and a 'couldn't fetch song info' toast shows")
+        else:
+            issues.append(f"  [ERROR] songBasicInfo / upsertSongInfo failed "
+                          f"({counts['songinfo_upsert_fail']}x) — song metadata not written to DB")
+
+    if counts["image_null"]:
+        issues.append(f"  [WARN] image request with null model ({counts['image_null']}x) "
+                      f"— ImageFactory built a request for a null thumbnail URL (usually benign: "
+                      f"artwork requested before a song loads)")
+
+    if counts["thumb_oversized"]:
+        issues.append(f"  [INFO] {counts['thumb_oversized']} oversized/chained thumbnail requests "
+                      f"— size params stacked (e.g. =w60-h60…-w900-h900); small rows decoding 900px "
+                      f"JPEGs. ThumbnailSizeInterceptor should be rewriting these")
+
+    if counts["reverb_fail"]:
+        issues.append(f"  [INFO] audio effect unavailable on device ({counts['reverb_fail']}x) "
+                      f"— Reverb/AudioEffect init failed; benign, device lacks the effect")
+
+    if counts["changelog_crash"]:
+        issues.append(f"  [ERROR] changelog dialog crash ({counts['changelog_crash']}x) "
+                      f"— ChangelogsDialog index out of bounds")
 
     if counts["http_400_iframe"]:
         issues.append(f"  [WARN] YouTube /iframe_api returned 400 ({counts['http_400_iframe']}x) "
@@ -174,6 +214,9 @@ def analyze(lines, filter_video=None, verbose=False):
         "exo_error", "ktor_400", "exception", "success_debug",
         # dataspec / VR resolver path
         "vr_resolved", "unavailable", "potoken_asset_miss", "ios_override_403",
+        # song-info parse + image loading + UI
+        "songinfo_upsert_fail", "missing_field", "image_null",
+        "thumb_oversized", "changelog_crash",
     }
 
     shown = 0

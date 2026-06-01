@@ -8,7 +8,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import app.kreate.android.R
-import app.kreate.util.thumbnail
 import coil3.Image
 import coil3.compose.AsyncImagePainter.State
 import coil3.imageLoader
@@ -52,8 +51,11 @@ object ImageFactory : KoinComponent {
          * TODO: data saver that automatically lower the quality to
          * TODO: reduce loading time and to preserve data usage.
          */
+        // Pass the base URL untouched and let [ThumbnailSizeInterceptor] resize it to
+        // the actually-resolved on-screen size at fetch time, instead of baking a fixed
+        // THUMBNAIL_SIZE into every request (which made 60dp rows decode 900px JPEGs).
         ImageRequest.Builder( context )
-                    .data( thumbnailUrl.thumbnail( THUMBNAIL_SIZE ) )
+                    .data( thumbnailUrl )
                     .diskCacheKey( thumbnailUrl )
                     .placeholder( R.drawable.loader )
                     .error( R.drawable.noimage )
