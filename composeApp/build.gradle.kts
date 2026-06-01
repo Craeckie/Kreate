@@ -309,14 +309,12 @@ android {
             signingConfig = signingConfigs.getByName( "nightly" )
 
             val longFormat = SimpleDateFormat("yyyy.MM.dd")
-            val shortFormat = SimpleDateFormat("yyMMdd")
 
             // App's properties
             applicationIdSuffix = ".nightly"
             versionName = longFormat.format (Date() )
             manifestPlaceholders["appName"] = "Nightly"
-            // The idea is to combine build date and current version code together
-            versionCode = "${shortFormat.format( Date() )}$vCode".toInt()
+            versionCode = vCode + 1
         }
         create( "prod" ) {
             dimension = "env"

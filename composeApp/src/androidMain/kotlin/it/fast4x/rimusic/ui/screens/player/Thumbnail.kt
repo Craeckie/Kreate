@@ -20,9 +20,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -359,30 +359,25 @@ fun Thumbnail(
                     )
                 }
 
-                var errorCounter by remember { mutableIntStateOf(0) }
-
-                if (error != null) {
-                    errorCounter = errorCounter.plus(1)
-                    if (errorCounter < 3) {
-                        Logger.e( error?.cause?.cause ) { "Playback error" }
-                        Toaster.e(
-                            if (currentWindow.mediaItem.isLocal)
-                                localMusicFileNotFoundError
-                            else when (error?.cause?.cause) {
-                                is UnresolvedAddressException, is UnknownHostException -> networkerror
-                                is PlayableFormatNotFoundException -> notfindplayableaudioformaterror
-                                is UnplayableException -> originalvideodeletederror
-                                is LoginRequiredException -> songnotplayabledueserverrestrictionerror
-                                is VideoIdMismatchException -> videoidmismatcherror
-                                is PlayableFormatNonSupported -> formatUnsupported
-                                is NoInternetException -> nointerneterror
-                                is TimeoutException -> timeouterror
-                                is UnknownException -> unknownerror
-                                else -> unknownplaybackerror
-                            }
-                        )
-                    //    player.seekToNext()
-                    } else errorCounter = 0
+                LaunchedEffect(error) {
+                    val err = error ?: return@LaunchedEffect
+                    Logger.e( err.cause?.cause ) { "Playback error" }
+                    Toaster.e(
+                        if (currentWindow.mediaItem.isLocal)
+                            localMusicFileNotFoundError
+                        else when (err.cause?.cause) {
+                            is UnresolvedAddressException, is UnknownHostException -> networkerror
+                            is PlayableFormatNotFoundException -> notfindplayableaudioformaterror
+                            is UnplayableException -> originalvideodeletederror
+                            is LoginRequiredException -> songnotplayabledueserverrestrictionerror
+                            is VideoIdMismatchException -> videoidmismatcherror
+                            is PlayableFormatNonSupported -> formatUnsupported
+                            is NoInternetException -> nointerneterror
+                            is TimeoutException -> timeouterror
+                            is UnknownException -> unknownerror
+                            else -> unknownplaybackerror
+                        }
+                    )
                 }
             }
             /*
