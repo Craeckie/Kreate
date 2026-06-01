@@ -9,7 +9,7 @@ import androidx.annotation.MainThread
 import androidx.collection.ArrayMap
 import app.kreate.android.BuildConfig
 import co.touchlab.kermit.Logger
-import com.metrolist.innertube.YouTube
+import java.net.Proxy
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -330,7 +330,7 @@ class PoTokenWebView private constructor(
         private const val JS_INTERFACE = "PoTokenWebView"
 
         private val httpClient = OkHttpClient.Builder()
-            .proxy(YouTube.proxy)
+            .proxy(Proxy.NO_PROXY)
             .build()
 
         suspend fun getNewPoTokenGenerator(context: Context): PoTokenWebView {

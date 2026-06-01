@@ -146,8 +146,8 @@ val playerModule = module {
         //</editor-fold>
 
         StatefulPlayerImpl(
-            context,
-            ExoPlayer.Builder(context)
+            get<Context>(),
+            ExoPlayer.Builder(get<Context>())
                 .setMediaSourceFactory( dataSource )
                 .setHandleAudioBecomingNoisy( true )
                 .setWakeMode( C.WAKE_MODE_NETWORK )
