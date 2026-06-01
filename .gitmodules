@@ -10,4 +10,4 @@
 [submodule "modules/metrolist"]
 	path = modules/metrolist
 	url = https://github.com/Craeckie/Kreate-Metrolist-innertube.git
-	branch = kreate-old
+	branch = main
