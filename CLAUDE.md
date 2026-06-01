@@ -108,12 +108,13 @@ The runtime player is wired together via Koin DI. Trace any playback bug through
 
 3. **`StatefulPlayer` / `StatefulPlayerImpl` (`app.kreate.android.service.player`)** — wraps an ExoPlayer with shuffle/repeat/sleep-timer/radio state. The injected singleton is constructed in `app.kreate.di.PlayerModule`.
 
-4. **`PlayerModule` (`app.kreate.di/PlayerModule.kt`)** — the most load-bearing file for stream resolution. It wires up:
-   - A two-tier cache `ResolvingDataSource.Factory`: `downloadCache` over `cache` over `DefaultDataSource` with `OkHttpDataSource` upstream. Both caches set `FLAG_IGNORE_CACHE_ON_ERROR`.
-   - The `resolver(...)` lambda that, for non-local URIs, calls `upsertSongInfo` (writes song metadata to Room), then `getPlayableUrl(songId)` which calls `makeStreamCache(...)`. `makeStreamCache` walks the InnerTube client fallback chain (`nextFallbackMethod`): **`METHOD_ANDROID_VR → METHOD_ANDROID (reel) → METHOD_WEB → METHOD_IOS`** (IOS terminal). The chosen URL is validated with a `HEAD` range request, then cached in an in-memory `ConcurrentMap<String, StreamCache>` keyed by song id, with expiry tracking. See the **YouTube stream resolution** subsection below — the VR-first chain is the fix for the 403 / "stops at ~1 min" failures.
-   - `extractFormat` picks an audio adaptive format by `AudioQualityFormat` preference, `extractStreamUrl` deobfuscates `signatureCipher` via `YoutubeJavaScriptPlayerManager` (a no-op for VR/mobile URLs, which are pre-signed and carry no `n` param).
-   - `clearCachedStreamUrlOf(songId)` is the escape hatch when a cached URL goes stale — call it before retrying a failed playback.
-   - Diagnostic breadcrumbs are logged at **`Info`** (`logger.i`, `dataspec` tag) per client attempt: chosen client, `playabilityStatus`, itag, HEAD result, and `summarizeStreamUrl` (the `c=`/`itag=`/`expire=`/`pot=` of the resolved URL). Info level is deliberate — release builds default `minSeverity` to `Info`, so `.d`/`.v` lines are invisible in the field (see Logging note).
+4. **`PlayerModule` (`app.kreate.di/PlayerModule.kt`)** — wires up the ExoPlayer data source chain: `downloadCache` over `cache` over `DefaultDataSource` with `OkHttpDataSource` upstream. The `resolver(...)` lambda calls `resolveInnertubeMedia` from `InnertubeResolvingDataSource.kt`.
+
+5. **`InnertubeResolvingDataSource.kt` (`app.kreate.di`)** — the current stream resolution entry point. For non-local URIs it calls `upsertSongInfo` (Room write), then `getPlayableUrl(songId)`. `getPlayableUrl` caches the resolved `YTPlayerUtils.PlaybackData` in a `ConcurrentHashMap` keyed by song id. Cache misses delegate to `YTPlayerUtils.playerResponseForPlayback(...)`.
+
+6. **`YTPlayerUtils` (`com.metrolist.music.utils.YTPlayerUtils`)** — Metrolist-derived multi-client resolver. Uses `WEB_REMIX` as main client, with a long `STREAM_FALLBACK_CLIENTS` array tried in order: `TVHTML5_SIMPLY_EMBEDDED_PLAYER, TVHTML5, ANDROID_VR_1_43_32, ANDROID_VR_1_61_48, ANDROID_CREATOR, IPADOS, ANDROID_VR_NO_AUTH, MOBILE, IOS, WEB, WEB_CREATOR`. Key invariant: **`getOrNull()` is used on the main client**, so an HTTP 400 from YouTube does not abort the function — the ANDROID_VR clients in the fallback array are still tried.
+   - `CipherDeobfuscator` (`com.metrolist.music.utils.cipher`) — singleton that holds a `WebView` for JS-based signature deobfuscation and n-param transform. **Must be initialized via `CipherDeobfuscator.initialize(context)` in `MainApplication.onCreate()`** before any playback; failing to do so causes `UninitializedPropertyAccessException` in `PlayerJsFetcher` and `PoTokenGenerator`.
+   - `clearCachedStreamUrlOf(songId)` in `InnertubeResolvingDataSource.kt` is the escape hatch when a cached URL goes stale.
 
 5. **`PlaybackExceptions` (`it.fast4x.rimusic.service.PlaybackExceptions`)** — domain-specific `PlaybackException` subclasses (`PlayableFormatNotFoundException`, `UnplayableException`, `LoginRequiredException`, `MissingDecipherKeyException`, `NoInternetException`, `TimeoutException`, …). Use these rather than generic exceptions when raising errors from the player layer; they carry `ERROR_CODE_*` ints that the UI layer keys off.
 
@@ -131,9 +132,34 @@ This is the #1 source of "won't play" reports. Findings (validated 2026-05-30 ag
 - **Not `n`-throttling.** Mobile-client (VR/IOS) URLs carry no `n` throttling param, so the classic throttle-stall is not the mechanism here; `getUrlWithThrottlingParameterDeobfuscated` is a no-op for them.
 
 **When investigating a "won't play" / "stops partway" report:**
-- Reference extractors are checked out in-repo: `yt-dlp/yt_dlp/extractor/youtube/` (esp. `_base.py` `INNERTUBE_CLIENTS` and the PO-token policies) and `NewPipeExtractor/extractor/`. Use them to learn which clients currently work — YouTube changes this often.
-- `scripts/vr_probe.py <videoId>` replicates the VR vs IOS player request and probes byte ranges with real HTTP `Range` headers — it distinguishes outright-403, ~1-min teaser-block, and throttling without an Android build.
-- Ask the user to raise `RUNTIME_LOG_SEVERITY` (or use a debug build) and capture the `dataspec` Info logs; they show which client won and whether a `pot=` was attached.
+
+1. **Get the logs.** Ask the user to share a logcat file (bug reporter in-app, or `adb logcat`). Release builds log at `Info` minimum; the relevant tag is `YTPlayerUtils`.
+
+2. **Run the analysis script first:**
+   ```bash
+   python3 scripts/logcat_analyze.py <logcat.txt>
+   # or for a specific video
+   python3 scripts/logcat_analyze.py <logcat.txt> --video <videoId>
+   # or live
+   adb logcat | python3 scripts/logcat_analyze.py -
+   ```
+   The script flags: `CipherDeobfuscator` not initialized, HTTP 400/403 at the player endpoint, PO-token failures, signature timestamp failures, which client won or whether all failed.
+
+3. **Interpret the summary:**
+   - `[CRITICAL] CipherDeobfuscator.appContext not initialized` → `CipherDeobfuscator.initialize(this)` is missing from `MainApplication.onCreate()`. This causes `PlayerJsFetcher` and `PoTokenGenerator` to crash for *every* song.
+   - `[WARN] music.youtube.com/player returned 400` → YouTube is blocking the IP or fingerprinting `WEB_REMIX`. The fallback chain (ANDROID_VR etc.) should activate — if it doesn't, check that the main client uses `getOrNull()` not `getOrThrow()` at `YTPlayerUtils.kt` line ~123.
+   - `[WARN] PO-token generation failed` + no `[OK] Successful playback resolutions` → all web clients fail. ANDROID_VR clients should not need a PO token.
+   - `[ERROR] All clients exhausted` → check `STREAM_FALLBACK_CLIENTS` in `YTPlayerUtils.kt` vs yt-dlp `INNERTUBE_CLIENTS` to see what changed.
+   - `[WARN] 403 on stream URL` → ANDROID_VR URL expiry or a VR client version YouTube no longer accepts. Check `ANDROID_VR_1_43_32` / `ANDROID_VR_1_61_48` clientVersions against yt-dlp.
+
+4. **Probe without a device:**
+   ```bash
+   python3 scripts/vr_probe.py <videoId>          # VR vs IOS byte-range probe
+   python3 scripts/vr_probe.py <videoId> --client VR   # VR only
+   ```
+   Distinguishes outright-403, ~1-min teaser-block, and throttling.
+
+5. **Reference extractors** (checked out in-repo): `yt-dlp/yt_dlp/extractor/youtube/` (esp. `_base.py` `INNERTUBE_CLIENTS` and PO-token policies) and `NewPipeExtractor/extractor/`. Check these when YouTube changes client requirements.
 
 ### Database
 

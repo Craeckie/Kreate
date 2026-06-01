@@ -27,6 +27,7 @@ import coil3.request.crossfade
 import io.ktor.client.HttpClient
 import it.fast4x.rimusic.utils.AppLifecycleTracker
 import kotlinx.coroutines.Dispatchers
+import com.metrolist.music.utils.cipher.CipherDeobfuscator
 import me.knighthat.innertube.Innertube
 import org.koin.android.ext.android.inject
 import org.koin.android.ext.koin.androidContext
@@ -47,6 +48,8 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         }
 
         setupLogging( koinLogger )
+
+        CipherDeobfuscator.initialize( this )
 
         Innertube.setProvider( InnertubeProvider() )
 

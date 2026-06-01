@@ -1,0 +1,1 @@
+Fixed all songs failing to play — the YouTube Music API base path was missing "/youtubei/v1/" from every request, causing HTTP 400 on all clients including ANDROID_VR. Also fixed a startup crash when the changelogs dialog opened with empty release notes.

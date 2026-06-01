@@ -110,12 +110,14 @@ open class ChangelogsDialog(context: Context): Dialog() {
                 containerColor = Color.Transparent,
                 contentColor = colorPalette.text,
                 indicator = { tabPositions ->
-                    val selectedPosition = tabPositions[pagerState.targetPage]
-                    TabRowDefaults.PrimaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset( selectedPosition ),
-                        color = colorPalette.accent,
-                        width = selectedPosition.width
-                    )
+                    if (tabPositions.isNotEmpty()) {
+                        val selectedPosition = tabPositions[pagerState.targetPage]
+                        TabRowDefaults.PrimaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset( selectedPosition ),
+                            color = colorPalette.accent,
+                            width = selectedPosition.width
+                        )
+                    }
                 }
             ) {
                 sections.forEachIndexed { index, section ->

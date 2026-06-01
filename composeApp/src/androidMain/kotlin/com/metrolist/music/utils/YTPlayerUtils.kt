@@ -118,12 +118,18 @@ object YTPlayerUtils : KoinComponent {
             }
         }
 
-        // Try WEB_REMIX with signature timestamp and poToken (same as before)
+        // Try WEB_REMIX with signature timestamp and poToken.
+        // Use getOrNull() so that a hard HTTP error (e.g. 400 from YouTube blocking the IP)
+        // does NOT abort the function — we fall through to the ANDROID_VR fallback clients.
         logger.d("Attempting to get player response using MAIN_CLIENT: ${MAIN_CLIENT.clientName}")
-        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, signatureTimestamp.timestamp, poToken?.playerRequestPoToken).getOrThrow()
+        var mainPlayerResponse = YouTube.player(videoId, playlistId, MAIN_CLIENT, signatureTimestamp.timestamp, poToken?.playerRequestPoToken).getOrNull()
+
+        if (mainPlayerResponse == null) {
+            logger.i("Main client ${MAIN_CLIENT.clientName} failed completely for videoId=$videoId — falling back to fallback clients")
+        }
 
         // Debug uploaded track response
-        if (isUploadedTrack || playlistId?.contains("MLPT") == true) {
+        if (mainPlayerResponse != null && (isUploadedTrack || playlistId?.contains("MLPT") == true)) {
             println("[PLAYBACK_DEBUG] Main player response status: ${mainPlayerResponse.playabilityStatus.status}")
             println("[PLAYBACK_DEBUG] Playability reason: ${mainPlayerResponse.playabilityStatus.reason}")
             println("[PLAYBACK_DEBUG] Video details: title=${mainPlayerResponse.videoDetails?.title}, videoId=${mainPlayerResponse.videoDetails?.videoId}")
@@ -135,7 +141,7 @@ object YTPlayerUtils : KoinComponent {
         val wasOriginallyAgeRestricted: Boolean
 
         // Check if WEB_REMIX response indicates age-restricted
-        val mainStatus = mainPlayerResponse.playabilityStatus.status
+        val mainStatus = mainPlayerResponse?.playabilityStatus?.status
         val isAgeRestrictedFromResponse = mainStatus in listOf("AGE_CHECK_REQUIRED", "AGE_VERIFICATION_REQUIRED", "LOGIN_REQUIRED", "CONTENT_CHECK_REQUIRED")
         wasOriginallyAgeRestricted = isAgeRestrictedFromResponse
 
@@ -151,11 +157,9 @@ object YTPlayerUtils : KoinComponent {
             }
         }
 
-        // If we still don't have a valid response, throw
-
-        var audioConfig = mainPlayerResponse.playerConfig?.audioConfig
-        val videoDetails = mainPlayerResponse.videoDetails
-        val playbackTracking = mainPlayerResponse.playbackTracking
+        var audioConfig = mainPlayerResponse?.playerConfig?.audioConfig
+        val videoDetails = mainPlayerResponse?.videoDetails
+        val playbackTracking = mainPlayerResponse?.playbackTracking
         var format: PlayerResponse.StreamingData.Format? = null
         var streamUrl: String? = null
         var streamExpiresInSeconds: Int? = null
@@ -163,7 +167,7 @@ object YTPlayerUtils : KoinComponent {
         val retryMainPlayerResponse: PlayerResponse? = if (usedAgeRestrictedClient != null) mainPlayerResponse else null
 
         // Check current status
-        val currentStatus = mainPlayerResponse.playabilityStatus.status
+        val currentStatus = mainPlayerResponse?.playabilityStatus?.status
         val isAgeRestricted = currentStatus in listOf("AGE_CHECK_REQUIRED", "AGE_VERIFICATION_REQUIRED", "LOGIN_REQUIRED", "CONTENT_CHECK_REQUIRED")
 
         if (isAgeRestricted) {
@@ -172,9 +176,10 @@ object YTPlayerUtils : KoinComponent {
                 .i("Age-restricted content detected: videoId=$videoId, status=$currentStatus")
         }
 
-        // For age-restricted: skip main client, start with fallbacks
-        // For normal content: standard order
+        // For age-restricted or completely-failed main client: skip to fallbacks immediately.
+        // For normal content: try main client streams first (index -1), then fallbacks.
         val startIndex = when {
+            mainPlayerResponse == null -> 0
             isAgeRestricted -> 0
             else -> -1
         }
@@ -184,7 +189,7 @@ object YTPlayerUtils : KoinComponent {
         var bestFallbackExpiry: Int? = null
         var bestFallbackResponse: PlayerResponse? = null
 
-        val hasHighQuality = mainPlayerResponse.streamingData?.adaptiveFormats?.any { it.audioQuality == "AUDIO_QUALITY_HIGH" } == true
+        val hasHighQuality = mainPlayerResponse?.streamingData?.adaptiveFormats?.any { it.audioQuality == "AUDIO_QUALITY_HIGH" } == true
 
         for (clientIndex in (startIndex until STREAM_FALLBACK_CLIENTS.size)) {
             // reset for each client
