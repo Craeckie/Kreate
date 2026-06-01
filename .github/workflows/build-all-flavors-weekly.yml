@@ -122,11 +122,9 @@ jobs:
 
     env:
       BUILD_DATE: ${{ needs.build_time.outputs.dot_date }}
-      STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-      KEY_PASSWORD: ${{ secrets.PROD_KEY_PASSWORD }}
       OFFICIAL_BUILD_PASSPHRASE: ${{ secrets.OFFICIAL_BUILD_PASSPHRASE }}
-      KEYSTORE_PATH: ${{ vars.KEYSTORE_PATH }}
-      KEYSTORE_FILENAME: production.jks
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
     strategy:
       matrix:
@@ -150,31 +148,14 @@ jobs:
             type: Uncompressed
 
     steps:
-      # Checkout is placed before reverting keystore because in read
-      # GitHub Action env, the repo gets cloned into another folder
-      # i.e /home/runner/work/Kreate/Kreate
-      # Without cloning first, the keystore will be placed in
-      # /home/runner/work/Kreate/.ignore.d/keystores/production.jks
-      # Which will unintentionally make the build process fail because it
-      # can't find the keystore to sign the apk
       - uses: actions/checkout@v6
         with:
           submodules: true
-          # Only clone the latest version of repo.
-          # Checking for changes happened before this job so
-          # it's unnecessary to pull more than needed.
-          # Plus, save time for other steps to run
 
-      - name: Revert keystore from base64 to PCKS#12 file
-        run: |
-          mkdir -p "$KEYSTORE_PATH"
-
-          echo "${{ secrets.PROD_KEYSTORE }}" | base64 -d > $KEYSTORE_PATH/$KEYSTORE_FILENAME
-
-      # This step is designed to fail when decoded keystore's
-      # hash doesn't match pre-defined hash
-      - name: Verify keystore
-        run: echo "${{ secrets.PROD_KEYSTORE_SHA256 }} $KEYSTORE_PATH/$KEYSTORE_FILENAME" | sha256sum -c
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | tr -d '\r\n' | base64 -d > "$RUNNER_TEMP/production.jks"
 
       - name: Setup Java 21
         uses: actions/setup-java@v5.2.0
@@ -200,6 +181,8 @@ jobs:
 
       - name: Build with Gradle
         # I.E. assembleGithubX64ProdRelease
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/production.jks
         run: ./gradlew "assemble${{ matrix.platform }}${{ matrix.architect }}Prod${{ matrix.type }}"
 
       - name: Get build path
@@ -225,6 +208,8 @@ jobs:
   upload-to-release:
     needs: [build_time, versioning, build-complex]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download signed APKs
@@ -250,7 +235,6 @@ jobs:
             
             You can read change logs on our [Blog](https://kreate.knighthat.me/blog/tags/release) website
 
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
-          previous_tag: v${{ needs.versioning.outputs.upstream }}
