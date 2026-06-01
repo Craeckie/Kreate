@@ -1,0 +1,1 @@
+Fixed a crash/freeze that occurred when a song failed to play (e.g. bot-restricted videos). An infinite UI loop was triggered on every playback error, making the app unresponsive until restarted.
