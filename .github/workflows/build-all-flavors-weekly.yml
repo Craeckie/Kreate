@@ -1,6 +1,10 @@
 name: Build all flavors
 
 on:
+  push:
+    tags:
+      - 'v[0-9]*'  # trigger on version tags like v2.2.0-5
+
   schedule:
     # Gotta wait until contributors.json is updated
     - cron: '0 3 1,14 * *'  # 3AM on the 1st and 14th of every month

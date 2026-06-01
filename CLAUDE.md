@@ -73,7 +73,11 @@ This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and i
    - New upstream version → reset N to 1: `versionCode = newUpstreamCode * 100 + 1`, `versionName = "newX.Y.Z-1"`
 3. Create `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` with user-facing notes.
 4. Commit both files and push to `main`.
-5. Manually trigger the **Build all flavors** workflow (`workflow_dispatch`) on GitHub Actions.
+5. Create and push the release tag — this automatically triggers the **Build all flavors** workflow:
+   ```bash
+   git tag v<versionName>   # e.g. git tag v2.2.0-5
+   git push origin v<versionName>
+   ```
 
 CI will fail if the changelog file is missing or `versionName` matches the latest release tag on this fork.
 
