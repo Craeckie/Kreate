@@ -1,0 +1,1 @@
+Fix: "Song info couldn't be loaded" error resolved — YouTube changed the response format and songs now parse correctly. Also fixed laggy thumbnails and dropped frames by loading images at actual on-screen size instead of a hardcoded 900px.
