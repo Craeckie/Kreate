@@ -1,0 +1,5 @@
+Based on upstream 2.2.0.
+
+Fixes:
+- HTTP 403 errors no longer cause silent retries; ExoPlayer surfaces them immediately
+- On 403, cached stream URL is cleared and re-resolved once before giving up

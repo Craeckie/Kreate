@@ -47,6 +47,32 @@ The build matrix is **3 platform flavors × 5 arch flavors × 2 env flavors × 4
 
 The release notes copy task (`copyReleaseNote`) runs automatically before any non-debug build; it reads `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 
+### Creating a release (Debian-style backport versioning)
+
+This fork uses a Debian-style backport version scheme: `<upstream>-<N>` where N starts at 1 and increments if a second release is needed without an upstream bump.
+
+**Version encoding in `gradle/libs.versions.toml`:**
+- `versionName` = `"<upstream_version>-<N>"`, e.g. `"2.2.0-1"`, `"2.2.0-2"`, `"2.2.1-1"`
+- `versionCode` = `upstream_versionCode * 100 + N`, e.g. upstream `138` → `13801`, `13802`; upstream `139` → `13901`
+
+This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and is always higher than upstream's raw code.
+
+**Steps for a new release:**
+
+1. Determine the upstream base:
+   ```
+   upstream versionCode = N  (from gradle/libs.versions.toml before rebase, or from knighthat/Kreate)
+   upstream versionName = X.Y.Z
+   ```
+2. Set our version in `gradle/libs.versions.toml`:
+   - Same upstream version as last release → increment N: `versionCode = upstreamCode * 100 + N`, `versionName = "X.Y.Z-N"`
+   - New upstream version → reset N to 1: `versionCode = newUpstreamCode * 100 + 1`, `versionName = "newX.Y.Z-1"`
+3. Create `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` with user-facing notes.
+4. Commit both files and push to `main`.
+5. Manually trigger the **Build all flavors** workflow (`workflow_dispatch`) on GitHub Actions.
+
+CI will fail if the changelog file is missing or `versionName` matches the latest release tag on this fork.
+
 Submodules `modules/innertube` and `modules/kizzy` must be checked out (`git submodule update --init --recursive`) — they're separate Gradle projects included via `settings.gradle.kts`.
 
 ## Architecture overview
