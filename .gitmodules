@@ -1,6 +1,6 @@
 [submodule "innertube"]
 	path = modules/innertube
-	url = https://github.com/Craeckie/Kreate-innertube.git
+	url = git@github.com:Craeckie/Kreate-innertube.git
 [submodule "strings-modifier"]
 	path = scripts/strings-modifier
 	url = https://gitlab.com/tannguyen047/string-modifier
@@ -9,5 +9,5 @@
 	url = https://github.com/knighthat/Kizzy
 [submodule "modules/metrolist"]
 	path = modules/metrolist
-	url = https://github.com/Craeckie/Kreate-Metrolist-innertube.git
+	url = git@github.com:Craeckie/Kreate-Metrolist-innertube.git
 	branch = main
