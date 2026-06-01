@@ -1,0 +1,1 @@
+Fix: songs now play reliably — restored the ANDROID_VR stream resolver as the primary client (pot-free, cipher-free) and fixed NewPipe not being initialized at startup.

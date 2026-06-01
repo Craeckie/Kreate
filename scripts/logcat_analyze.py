@@ -26,7 +26,7 @@ from collections import defaultdict
 RE_TS = re.compile(r"(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
 
 PATTERNS = [
-    # YTPlayerUtils info/debug
+    # YTPlayerUtils info/debug (metrolist path — kept for compatibility with older builds)
     ("main_client_fail",   re.compile(r"Main client .+ failed completely for videoId=(\S+)")),
     ("client_try",         re.compile(r"Trying (?:stream from MAIN_CLIENT|fallback client \d+/\d+): (.+)")),
     ("client_status_ok",   re.compile(r"Player response status OK for client: (.+)")),
@@ -36,6 +36,13 @@ PATTERNS = [
     ("stream_validate_fail", re.compile(r"Stream validation failed for client: (.+)")),
     ("format_none",        re.compile(r"No suitable format found for client: (.+)")),
     ("all_failed",         re.compile(r"Bad stream player response - all clients failed")),
+    # dataspec resolver path (AndroidVrStreamHelper / InnertubeResolvingDataSource)
+    ("vr_resolved",        re.compile(r"Resolved (\S+) via (\S+)")),
+    ("vr_method",          re.compile(r"Getting online stream url for \"(\S+)\" with method (\S+)")),
+    ("unavailable",        re.compile(r"Playability status not OK.*This video is unavailable")),
+    # Metrolist-path failure signatures (from logcat 13803 analysis)
+    ("potoken_asset_miss", re.compile(r"FileNotFoundException: po_token\.html")),
+    ("ios_override_403",   re.compile(r"<-- 403 https://\S+[?&]c=IOS")),
     # Signature / PO token
     ("sig_ts_ok",          re.compile(r"Signature timestamp obtained via NewPipe: (\d+)")),
     ("sig_ts_fail",        re.compile(r"Failed to get signature timestamp via NewPipe")),
@@ -89,6 +96,19 @@ def analyze(lines, filter_video=None, verbose=False):
                       f"({counts['cipher_uninit']}x) — CipherDeobfuscator.initialize(context) "
                       f"missing from MainApplication.onCreate()")
 
+    if counts["potoken_asset_miss"]:
+        issues.append(f"  [ERROR] po_token.html not found in APK assets ({counts['potoken_asset_miss']}x) "
+                      f"— file is in res/raw/ but not assets/; PoToken can never be generated for web clients")
+
+    if counts["ios_override_403"]:
+        issues.append(f"  [ERROR] NewPipe IOS-override 403 ({counts['ios_override_403']}x) "
+                      f"— c=IOS stream URLs 403 (IOS needs a GVS PO token); "
+                      f"pot-free ANDROID_VR streams being overwritten")
+
+    if counts["unavailable"]:
+        issues.append(f"  [ERROR] 'This video is unavailable' ({counts['unavailable']}x) "
+                      f"— all clients exhausted (metrolist YTPlayerUtils path failure)")
+
     if counts["http_400_iframe"]:
         issues.append(f"  [WARN] YouTube /iframe_api returned 400 ({counts['http_400_iframe']}x) "
                       f"— NewPipe embed-page fetch blocked (IP/rate-limit)")
@@ -117,13 +137,21 @@ def analyze(lines, filter_video=None, verbose=False):
         issues.append(f"  [WARN] 403 on stream URL ({counts['http_403']}x) — "
                       f"likely missing PO token on WEB/IOS client")
 
+    if counts["vr_resolved"]:
+        vr_wins = [g for _, t, g, _ in events if t == "vr_resolved"]
+        client_wins = defaultdict(int)
+        for g in vr_wins:
+            client_wins[g[1]] += 1
+        summary = ", ".join(f"{c}×{n}" for c, n in client_wins.items())
+        issues.append(f"  [OK]  Resolved via dataspec path: {summary}")
+
     if counts["stream_ok"]:
         winners = [g for _, t, g, _ in events if t == "stream_ok"]
         client_wins = defaultdict(int)
         for g in winners:
             client_wins[g[0]] += 1
         summary = ", ".join(f"{c}×{n}" for c, n in client_wins.items())
-        issues.append(f"  [OK]  Successful playback resolutions: {summary}")
+        issues.append(f"  [OK]  Successful playback resolutions (metrolist): {summary}")
 
     if not issues:
         issues.append("  No significant issues detected.")
@@ -144,6 +172,8 @@ def analyze(lines, filter_video=None, verbose=False):
         "sig_ts_fail", "potoken_fail", "cipher_uninit",
         "http_400_player", "http_400_iframe", "http_403",
         "exo_error", "ktor_400", "exception", "success_debug",
+        # dataspec / VR resolver path
+        "vr_resolved", "unavailable", "potoken_asset_miss", "ios_override_403",
     }
 
     shown = 0

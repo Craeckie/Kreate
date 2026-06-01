@@ -40,3 +40,7 @@ log-findings.md
 .env
 .secrets
 .vars
+
+### Reference extractor checkouts (debugging only — too large to vendor)
+/NewPipeExtractor/
+/yt-dlp/

@@ -8,6 +8,7 @@ import androidx.core.content.getSystemService
 import androidx.lifecycle.ProcessLifecycleOwner
 import app.kreate.android.Preferences
 import app.kreate.android.drawable.AppIcon
+import app.kreate.android.service.NewPipeDownloaderImpl
 import app.kreate.android.service.innertube.InnertubeProvider
 import app.kreate.android.utils.ConnectivityUtils
 import app.kreate.android.utils.CrashHandler
@@ -18,6 +19,9 @@ import app.kreate.logging.KoinBufferedLogger
 import app.kreate.logging.setupLogging
 import coil3.ImageLoader
 import coil3.PlatformContext
+import okhttp3.OkHttpClient
+import org.koin.java.KoinJavaComponent
+import org.schabi.newpipe.extractor.NewPipe
 import coil3.SingletonImageLoader
 import coil3.asImage
 import coil3.disk.DiskCache
@@ -50,6 +54,8 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         setupLogging( koinLogger )
 
         CipherDeobfuscator.initialize( this )
+
+        NewPipe.init( NewPipeDownloaderImpl( KoinJavaComponent.get(OkHttpClient::class.java) ) )
 
         Innertube.setProvider( InnertubeProvider() )
 

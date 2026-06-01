@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Subagents
+
+You have standing permission to spawn Explore, Plan, and general-purpose subagents whenever it would help — e.g., broad fan-out searches across the codebase, parallel investigation of multiple files or modules, or validating an approach before implementing. You do not need to wait for the user to ask.
+
 ## Project context
 
 Kreate is an Android (Kotlin Multiplatform / Compose Multiplatform) YouTube Music client, originally a fork of RiMusic, itself a fork of ViMusic. This repository is a further fork from `knighthat/Kreate` whose primary goal is fixing playback crashes/stops. Because the lineage spans multiple maintainers, expect inconsistent coding styles, multiple package roots covering similar concerns, and dead-ends from older code paths.
