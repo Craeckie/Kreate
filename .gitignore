@@ -44,3 +44,4 @@ log-findings.md
 ### Reference extractor checkouts (debugging only — too large to vendor)
 /NewPipeExtractor/
 /yt-dlp/
+.claude/settings.local.json
