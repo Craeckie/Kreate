@@ -139,7 +139,8 @@ class PlaybackService:
 
             val buttons = mutButtons.toList()
             withContext( Dispatchers.Main ) {
-                mediaSession.setMediaButtonPreferences( buttons )
+                if (::mediaSession.isInitialized)
+                    mediaSession.setMediaButtonPreferences( buttons )
             }
         }
     }
