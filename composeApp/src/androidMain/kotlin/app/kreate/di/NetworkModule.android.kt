@@ -4,6 +4,7 @@ import app.kreate.android.BuildConfig
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.enums.DohServer
+import app.kreate.android.utils.ProxyManager
 import app.kreate.logging.OkHttpLogger
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
@@ -26,15 +27,11 @@ import me.knighthat.innertube.Constants
 import me.knighthat.utils.Toaster
 import okhttp3.Dns
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 
@@ -52,26 +49,6 @@ private val JSON: Json = Json {
     classDiscriminatorMode = ClassDiscriminatorMode.NONE
 }
 
-private fun verifyProxy( proxy: Proxy, url: String = "https://httpbin.org/ip" ): Boolean =
-    runCatching {
-        OkHttpClient.Builder()
-                    .proxy( proxy )
-                    .connectTimeout( 3, TimeUnit.SECONDS )
-                    .callTimeout( 5, TimeUnit.SECONDS )
-                    .build()
-                    .newCall(
-                        Request.Builder()
-                               .head()
-                               .url( url )
-                               .build()
-                    )
-                    .execute()
-                    .use( Response::isSuccessful )
-    }.onFailure { err ->
-        Logger.e( err, LOGGING_TAG ) { "Failed to connect to $url via proxy $proxy" }
-        Toaster.w( R.string.error_failed_to_verify_proxy )
-    }.getOrDefault( false )
-
 private fun verifyDoH( resolver: DnsOverHttps, addresses: List<InetAddress>, domain: String = "google.com" ): Boolean =
     runCatching {
         val results = resolver.lookup( domain )
@@ -85,19 +62,6 @@ private fun verifyDoH( resolver: DnsOverHttps, addresses: List<InetAddress>, dom
     }.getOrDefault( false )
 
 actual val networkModule: Module = module {
-    factory<Proxy> {       // Recreate proxy instance every time it's called
-        if( !Preferences.IS_PROXY_ENABLED.value ) {
-            Logger.d( tag = LOGGING_TAG ) { "Proxy is not enabled" }
-            return@factory Proxy.NO_PROXY
-        }
-
-        val proxy = Proxy(
-            Preferences.PROXY_SCHEME.value,
-            InetSocketAddress(Preferences.PROXY_HOST.value, Preferences.PROXY_PORT.value)
-        )
-        // Must verify to prevent network failure
-        runBlocking( Dispatchers.IO ) { proxy.takeIf( ::verifyProxy ) ?: Proxy.NO_PROXY }
-    }
     factory<Dns> {
         if( Preferences.DOH_SERVER.value == DohServer.NONE ) {
             Logger.d( tag = LOGGING_TAG ) { "DoH is not enabled. Using system's DNS" }
@@ -133,7 +97,7 @@ actual val networkModule: Module = module {
         )
 
         OkHttpClient.Builder()
-                    .proxy( get() )
+                    .proxySelector( ProxyManager.proxySelector )
                     .dns( get() )
                     .addInterceptor( interceptor )
                     .build()

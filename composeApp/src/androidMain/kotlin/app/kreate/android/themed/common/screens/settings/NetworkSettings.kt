@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.enums.DohServer
+import app.kreate.android.utils.ProxyManager
 import app.kreate.android.themed.common.component.settings.SettingComponents
 import app.kreate.android.themed.common.component.settings.SettingEntrySearch
 import app.kreate.android.themed.common.component.settings.animatedEntry
@@ -62,10 +63,7 @@ fun NetworkSettings( paddingValues: PaddingValues ) {
             state = scrollState,
             contentPadding = PaddingValues(bottom = Dimensions.bottomSpacer)
         ) {
-            header(
-                titleId = R.string.proxy,
-                subtitle = { stringResource( R.string.restarting_rimusic_is_required ) }
-            )
+            header( titleId = R.string.proxy )
             entry( search, R.string.enable_proxy ) {
                 SettingComponents.BooleanEntry(
                     Preferences.IS_PROXY_ENABLED,
@@ -113,10 +111,8 @@ fun NetworkSettings( paddingValues: PaddingValues ) {
                             title = stringResource( R.string.setting_entry_test_proxy ),
                             onClick = {
                                 CoroutineScope( Dispatchers.IO ).launch {
-                                    val proxy: Proxy by inject(Proxy::class.java)
-                                    if( proxy !== Proxy.NO_PROXY )
+                                    if( ProxyManager.recheckWithFeedback() )
                                         Toaster.s( R.string.success_proxy_verified )
-                                    // Failed proxy message will be displayed automatically
                                 }
                             }
                         )

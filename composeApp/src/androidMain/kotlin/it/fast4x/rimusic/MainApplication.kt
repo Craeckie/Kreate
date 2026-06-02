@@ -13,6 +13,7 @@ import app.kreate.android.service.NewPipeDownloaderImpl
 import app.kreate.android.service.innertube.InnertubeProvider
 import app.kreate.android.utils.ConnectivityUtils
 import app.kreate.android.utils.CrashHandler
+import app.kreate.android.utils.ProxyManager
 import app.kreate.di.THUMBNAIL_SIZE
 import app.kreate.di.initKoin
 import app.kreate.logging.CoilLogger
@@ -67,6 +68,8 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
                                                                .build()
             registerNetworkCallback( networkRequest, ConnectivityUtils )
         }
+        // Start watching network state so the proxy is picked up without a restart
+        ProxyManager.initialize()
         // Register app lifecycle tracker
         ProcessLifecycleOwner.get().lifecycle.addObserver(AppLifecycleTracker)
     }
