@@ -25,6 +25,13 @@ interface SongPlaylistMapTable: DatabaseTable<SongPlaylistMap> {
         get() = "song_playlist_map"
 
     /**
+     * Return the ids of all playlists that contain [songId].
+     * Used during song re-id to migrate mappings to a new id.
+     */
+    @Query("SELECT DISTINCT playlist_id FROM song_playlist_map WHERE song_id = :songId")
+    fun getPlaylistIds( songId: String ): List<Long>
+
+    /**
      * Song with [songId] will be removed from all playlists
      *
      * @return number of rows affected by this operation

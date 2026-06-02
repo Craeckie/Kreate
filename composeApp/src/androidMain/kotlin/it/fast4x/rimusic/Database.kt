@@ -29,6 +29,8 @@ import it.fast4x.rimusic.Database.asyncQuery
 import it.fast4x.rimusic.Database.asyncTransaction
 import it.fast4x.rimusic.Database.insertIgnore
 import it.fast4x.rimusic.utils.asSong
+import it.fast4x.innertube.Innertube
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import me.knighthat.innertube.model.InnertubeSong
 import me.knighthat.utils.PropUtils
@@ -260,6 +262,100 @@ object Database : KoinComponent {
      */
     fun mapIgnore( playlist: Playlist, vararg mediaItems: MediaItem ) =
         mapIgnore( playlist, *mediaItems.map( MediaItem::asSong ).toTypedArray() )
+
+    /**
+     * Replace the stored videoId of a song with a working replacement.
+     * Suspends until the database transaction completes.
+     *
+     * **Common path (new id not yet in DB):**
+     * Renames the song's primary key via `UPDATE songs SET id = :newId`.
+     * Because every child table declares `onUpdate = ForeignKey.CASCADE`,
+     * SQLite automatically updates song_playlist_map, formats, lyrics,
+     * playback_history, persistent_queue, song_artist_map, and song_album_map.
+     *
+     * **Merge path (new id already in DB, or UNIQUE violation on common path):**
+     * Migrates playlist memberships from [oldId] to [newId] (skipping conflicts),
+     * carries over the original `liked_at` timestamp if the new row is neutral,
+     * then deletes the old row (remaining orphaned child rows are removed by CASCADE).
+     *
+     * **Note:** the merge path intentionally drops the old id's `playback_history`,
+     * play-counts, `lyrics`, and `format` rows (via CASCADE). Only playlist
+     * memberships and like state are migrated.
+     *
+     * In both paths the metadata of the surviving row is updated to reflect
+     * [replacement] (title, artists, thumbnail, album, artist maps).
+     */
+    suspend fun reIdSong( oldId: String, newId: String, replacement: Innertube.SongItem ) {
+        val deferred = CompletableDeferred<Unit>()
+        asyncTransaction {
+            try {
+                // ── Attempt common path; fall through to merge on UNIQUE violation ──
+                var isCommonPathSuccess = false
+
+                if( songTable.findByIdBlocking( newId ) == null ) {
+                    // ── Common path ───────────────────────────────────────────
+                    // Rename PK; CASCADE propagates to all child tables.
+                    // runCatching handles a UNIQUE violation if the resolver races
+                    // us and inserts newId between our check and updateId.
+                    isCommonPathSuccess = runCatching {
+                        songTable.updateId( oldId, newId ) > 0
+                    }.getOrDefault( false )
+                }
+
+                if( !isCommonPathSuccess ) {
+                    // ── Merge path ────────────────────────────────────────────
+                    // Re-point playlist memberships where there is no PK conflict.
+                    val playlists = songPlaylistMapTable.getPlaylistIds( oldId )
+                    playlists.forEach { playlistId ->
+                        // map() uses INSERT OR IGNORE — no-op if (newId, playlistId) exists
+                        songPlaylistMapTable.map( newId, playlistId )
+                    }
+
+                    // Carry over the original liked_at timestamp; likeState() would
+                    // reset it to "now", losing when the user originally liked it.
+                    val oldSong = songTable.findByIdBlocking( oldId )
+                    val newSong = songTable.findByIdBlocking( newId )
+                    if( oldSong?.likedAt != null && newSong?.likedAt == null ) {
+                        songTable.setLikedAt( newId, oldSong.likedAt )
+                    }
+
+                    // Delete old row — CASCADE removes remaining orphaned children
+                    oldSong?.let( songTable::delete )
+                }
+
+                // ── Refresh metadata on the (now surviving) new row ───────────
+                val title = replacement.info?.name ?: return@asyncTransaction
+                songTable.updateTitle( newId, title )
+
+                val artistsText = replacement.authors
+                    ?.joinToString(", ") { it.name ?: "" }
+                    ?.takeIf { it.isNotBlank() }
+                if( artistsText != null )
+                    songTable.updateArtists( newId, artistsText )
+
+                songTable.updateThumbnail( newId, replacement.thumbnail?.url )
+
+                // Album map
+                replacement.album?.let { songAlbum ->
+                    songAlbum.endpoint?.browseId?.let { albumBrowseId ->
+                        albumTable.insertIgnore( Album( id = albumBrowseId, title = songAlbum.name ?: "" ) )
+                        songAlbumMapTable.map( newId, albumBrowseId )
+                    }
+                }
+
+                // Artist maps
+                replacement.authors?.forEach { author ->
+                    val browseId = author.endpoint?.browseId ?: return@forEach
+                    val name     = author.name               ?: return@forEach
+                    artistTable.insertIgnore( Artist( id = browseId, name = name ) )
+                    songArtistMapTable.insertIgnore( SongArtistMap( newId, browseId ) )
+                }
+            } finally {
+                deferred.complete(Unit)
+            }
+        }
+        deferred.await()
+    }
 
     /**
      * Commit statements in BULK. If anything goes wrong during the transaction,

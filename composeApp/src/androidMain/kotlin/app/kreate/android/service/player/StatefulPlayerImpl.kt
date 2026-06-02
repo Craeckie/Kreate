@@ -41,6 +41,7 @@ import app.kreate.di.clearCachedStreamUrlOf
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.service.PlayerEventUpdateDiscord
+import app.kreate.android.service.SongRematcher
 import app.kreate.android.service.playback.PlaybackListener
 import app.kreate.android.service.playback.PlaybackService
 import app.kreate.android.utils.innertube.CURRENT_LOCALE
@@ -145,7 +146,9 @@ class StatefulPlayerImpl(
     //</editor-fold>
     private var errorTimestamp = 0L
     private var lastErrorMessage = ""
-    private val retried403Songs = mutableSetOf<String>()
+    private val retried403Songs  = mutableSetOf<String>()
+    /** Songs for which we already attempted an automatic rematch this session. */
+    private val rematchedSongs   = mutableSetOf<String>()
 
     override val currentMediaItemState = _currentMediaItemState.asStateFlow()
     override val currentTimelineState = _currentTimelineState.asStateFlow()
@@ -805,6 +808,80 @@ class StatefulPlayerImpl(
         updateMediaControl()
     }
 
+    /**
+     * When a song's videoId is no longer playable (YouTube retired/remapped it),
+     * search for a replacement by title + artist:
+     *   - STRONG match → swap the id in DB + queue silently and resume.
+     *   - WEAK match   → emit to [RematchRequests] so the UI can ask the user.
+     *   - No candidates → show a toast directing the user to the manual Rematch menu.
+     */
+    private fun launchRematch( deadMediaItem: MediaItem ) {
+        val deadId = deadMediaItem.mediaId
+        coroutineScope.launch {
+            // Prefer the stored Song (has accurate durationText for confidence scoring).
+            // Fall back to constructing from MediaItem metadata if the song isn't in the DB yet.
+            val deadSong: Song = Database.songTable.findById( deadId ).first()
+                ?: Song(
+                    id           = deadId,
+                    title        = deadMediaItem.mediaMetadata.title?.toString() ?: return@launch,
+                    artistsText  = deadMediaItem.mediaMetadata.artist?.toString(),
+                    durationText = null,
+                    thumbnailUrl = deadMediaItem.mediaMetadata.artworkUri?.toString()
+                )
+
+            logger.i { "Rematch: searching replacement for $deadId (${deadSong.title})" }
+            val candidates = SongRematcher.searchCandidates( deadSong )
+            val match      = SongRematcher.bestMatch( deadSong, candidates )
+
+            when {
+                match == null -> {
+                    logger.w { "Rematch: no candidates found for $deadId" }
+                    Toaster.w( context.getString( R.string.rematch_no_candidates ) )
+                }
+
+                match.confidence == SongRematcher.Confidence.STRONG -> {
+                    val newId = match.item.key
+                    logger.i { "Rematch STRONG: swapping $deadId → $newId" }
+                    Database.reIdSong( deadId, newId, match.item )
+                    withContext( Dispatchers.Main ) {
+                        val idx = currentMediaItemIndex
+                        replaceMediaItem( idx, match.item.asMediaItem )
+                        clearCachedStreamUrlOf( deadId )
+                        seekToDefaultPosition()
+                        prepare()
+                    }
+                    Toaster.i( context.getString( R.string.rematch_replaced_unavailable_track ) )
+                }
+
+                else -> {
+                    // WEAK confidence — ask the user to confirm
+                    logger.i { "Rematch WEAK: asking user to confirm replacement for $deadId" }
+                    RematchRequests.emit(
+                        RematchRequests.Request(
+                            deadSong   = deadSong,
+                            candidates = candidates,
+                            onAccepted = { chosen ->
+                                val newId = chosen.key
+                                Database.reIdSong( deadId, newId, chosen )
+                                coroutineScope.launch {
+                                    withContext( Dispatchers.Main ) {
+                                        val idx = currentMediaItemIndex
+                                        if( getMediaItemAt( idx ).mediaId == deadId ) {
+                                            replaceMediaItem( idx, chosen.asMediaItem )
+                                            clearCachedStreamUrlOf( deadId )
+                                            seekToDefaultPosition()
+                                            prepare()
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     override fun onPlayerError( error: PlaybackException ) {
         val rootCause = traverseErrorStack( error )
 
@@ -823,6 +900,21 @@ class StatefulPlayerImpl(
             logger.w { "Playback HTTP ${rootCause.responseCode} for ${currentMediaItem?.mediaId}" }
         }
 
+        // ── Auto-rematch for unavailable / unresolvable songs ─────────────────
+        if( (rootCause is UnplayableException || rootCause is PlayableFormatNotFoundException)
+            && currentMediaItem != null
+        ) {
+            val mediaItem = currentMediaItem!!
+            if( !mediaItem.isLocal && rematchedSongs.add( mediaItem.mediaId ) ) {
+                logger.i { "Song unplayable (${rootCause::class.simpleName}); attempting rematch for ${mediaItem.mediaId}" }
+                launchRematch( mediaItem )
+                // Don't show the error toast yet — launchRematch will either
+                // silently fix it or show its own feedback.
+                return
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         when( rootCause ) {
             is PlayableFormatNotFoundException -> context.getString( R.string.error_couldn_t_find_a_playable_audio_format )
             is NoInternetException -> context.getString( R.string.no_connection )
@@ -836,8 +928,10 @@ class StatefulPlayerImpl(
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
-        if (playbackState == Player.STATE_READY)
+        if (playbackState == Player.STATE_READY) {
             retried403Songs.clear()
+            rematchedSongs.clear()
+        }
     }
 
     override fun onEvents( player: Player, events: Player.Events ) {

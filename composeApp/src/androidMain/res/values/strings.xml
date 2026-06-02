@@ -667,6 +667,10 @@
     <string name="unmatched">Unmatched Songs</string>
     <string name="match_song">Rematch this Song</string>
     <string name="match_song_grid">Rematch Song</string>
+    <string name="rematch_searching">Looking for a replacement…</string>
+    <string name="rematch_replaced_unavailable_track">Replaced unavailable track automatically</string>
+    <string name="rematch_confirm_title">Song unavailable — confirm replacement?</string>
+    <string name="rematch_no_candidates">No replacement found. Use the Rematch menu to search manually.</string>
     <string name="swipe_Animation_No_Thumbnail">Swipe Animation</string>
     <string name="online_songs">Online Songs</string>
     <string name="explicit">Explicit</string>

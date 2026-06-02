@@ -130,6 +130,15 @@ interface SongTable: DatabaseTable<Song> {
     fun findById( songId: String ): Flow<Song?>
 
     /**
+     * Blocking variant of [findById] for use inside non-suspend transaction lambdas.
+     *
+     * @return [Song] with [songId], or null if not present
+     */
+    @Blocking
+    @Query("SELECT * FROM songs WHERE id = :songId LIMIT 1")
+    fun findByIdBlocking( songId: String ): Song?
+
+    /**
      * [searchTerm] appears in [Song.title] or [Song.artistsText].
      * Additionally, it's **case-insensitive**
      *
@@ -286,6 +295,34 @@ interface SongTable: DatabaseTable<Song> {
         WHERE id = :songId
     """)
     fun likeState( songId: String, likeState: Boolean? ): Int
+
+    /**
+     * Directly set [Song.likedAt] to a raw epoch-millisecond timestamp.
+     *
+     * Use this when carrying over an existing timestamp during a song re-id
+     * merge, to avoid the timestamp reset that [likeState] would cause.
+     * Positive values mean "liked at this time", negative mean "disliked".
+     *
+     * @return number of rows affected
+     */
+    @Query("UPDATE songs SET liked_at = :likedAt WHERE id = :songId")
+    fun setLikedAt( songId: String, likedAt: Long ): Int
+
+    /**
+     * Change the primary key of a [Song] from [oldId] to [newId].
+     *
+     * Because all child tables declare `onUpdate = ForeignKey.CASCADE`,
+     * SQLite will automatically rewrite the foreign key in
+     * song_playlist_map, formats, lyrics, playback_history,
+     * persistent_queue, song_artist_map, and song_album_map.
+     *
+     * **Only call this when [newId] does not already exist in the table**;
+     * otherwise a UNIQUE constraint violation will occur.
+     *
+     * @return number of rows updated (1 on success, 0 if [oldId] not found)
+     */
+    @Query("UPDATE songs SET id = :newId WHERE id = :oldId")
+    fun updateId( oldId: String, newId: String ): Int
 
     /**
      * @param songId identifier of [Song]

@@ -122,6 +122,7 @@ import app.kreate.android.R
 import app.kreate.android.coil3.ImageFactory
 import app.kreate.android.drawable.AppIcon
 import app.kreate.android.screens.player.background.BlurredCover
+import app.kreate.android.service.player.RematchRequests
 import app.kreate.android.service.player.StatefulPlayer
 import app.kreate.android.themed.rimusic.screen.player.ActionBar
 import app.kreate.util.readableText
@@ -163,6 +164,7 @@ import it.fast4x.rimusic.ui.components.themed.NowPlayingSongIndicator
 import it.fast4x.rimusic.ui.components.themed.PlayerMenu
 import it.fast4x.rimusic.ui.components.themed.RotateThumbnailCoverAnimationModern
 import it.fast4x.rimusic.ui.components.themed.SecondaryTextButton
+import it.fast4x.rimusic.ui.components.themed.AutoRematchConfirmDialog
 import it.fast4x.rimusic.ui.components.themed.ThumbnailOffsetDialog
 import it.fast4x.rimusic.ui.components.themed.animateBrushRotation
 import it.fast4x.rimusic.ui.styling.Dimensions
@@ -298,6 +300,23 @@ fun Player(
     var showThumbnailOffsetDialog by rememberSaveable {
         mutableStateOf(false)
     }
+
+    // ── Auto-rematch confirmation (weak match from player) ─────────────────────
+    var rematchRequest by remember {
+        mutableStateOf<RematchRequests.Request?>(null)
+    }
+    LaunchedEffect(Unit) {
+        RematchRequests.flow.collect { request ->
+            rematchRequest = request
+        }
+    }
+    rematchRequest?.let { req ->
+        AutoRematchConfirmDialog(
+            request   = req,
+            onDismiss = { rematchRequest = null }
+        )
+    }
+    // ──────────────────────────────────────────────────────────────────────────
 
     if (showThumbnailOffsetDialog) {
 

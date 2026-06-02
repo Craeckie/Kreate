@@ -2010,6 +2010,160 @@ fun SongMatchingDialog(
     }
 }
 
+/**
+ * Shown when the automatic rematch found a candidate but with low confidence
+ * (WEAK: duration mismatch or poor title/artist overlap).
+ *
+ * Presents the search results to the user and lets them pick one, or dismiss.
+ * On selection [request.onAccepted] is invoked, which the player uses to
+ * perform the global re-id and resume playback.
+ */
+@Composable
+fun AutoRematchConfirmDialog(
+    request: app.kreate.android.service.player.RematchRequests.Request,
+    onDismiss: () -> Unit
+) {
+    val songToRematch = request.deadSong
+    val candidates    = request.candidates
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth(if (isLandscape) 0.5f else 0.9f)
+                .fillMaxHeight(if (isLandscape) 0.9f else 0.7f)
+                .background(color = colorPalette().background1, shape = RoundedCornerShape(8.dp))
+        ) {
+            // Header: the unavailable song
+            BasicText(
+                text = stringResource(R.string.rematch_confirm_title),
+                style = typography().s.semiBold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+            Row(
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, colorPalette().text, shape = RoundedCornerShape(8.dp))
+                    .padding(horizontal = 5.dp, vertical = 10.dp)
+            ) {
+                ImageFactory.AsyncImage(
+                    thumbnailUrl = songToRematch.thumbnailUrl,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .padding(end = 5.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .size(40.dp)
+                )
+                Column {
+                    BasicText(
+                        text = cleanPrefix(songToRematch.cleanTitle()),
+                        style = typography().xs.semiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        BasicText(
+                            text = songToRematch.cleanArtistsText(),
+                            style = typography().s.semiBold.secondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier
+                                .weight(1f)
+                                .basicMarquee(iterations = Int.MAX_VALUE)
+                        )
+                        BasicText(
+                            text = songToRematch.durationText ?: "",
+                            style = typography().xs.secondary.medium,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 5.dp)
+                        )
+                    }
+                }
+            }
+
+            // Result list
+            if (candidates.isNotEmpty()) {
+                LazyColumn {
+                    itemsIndexed(candidates) { _, song ->
+                        if (song != null) {
+                            Row(
+                                horizontalArrangement = Arrangement.Start,
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                                    .clickable {
+                                        request.onAccepted(song)
+                                        onDismiss()
+                                    }
+                            ) {
+                                ImageFactory.AsyncImage(
+                                    thumbnailUrl = song.asMediaItem.mediaMetadata.artworkUri.toString(),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .padding(end = 5.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .size(30.dp)
+                                )
+                                Column {
+                                    BasicText(
+                                        text = cleanPrefix(song.title ?: ""),
+                                        style = typography().xs.semiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        BasicText(
+                                            text = song.asSong.cleanArtistsText(),
+                                            style = typography().xs.semiBold.secondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Clip,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .basicMarquee(iterations = Int.MAX_VALUE)
+                                        )
+                                        BasicText(
+                                            text = song.durationText ?: "",
+                                            style = typography().xxs.secondary.medium,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(end = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                BasicText(
+                    text = stringResource(R.string.rematch_no_candidates),
+                    style = typography().xs.secondary,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+
+            // Dismiss button
+            Box(modifier = Modifier.align(Alignment.End).padding(end = 12.dp, bottom = 8.dp)) {
+                DialogTextButton(
+                    text = stringResource(android.R.string.cancel),
+                    onClick = onDismiss
+                )
+            }
+        }
+    }
+}
+
   /*if (isShowingLyrics && !showlyricsthumbnail)
       DefaultDialog(
           onDismiss = {
