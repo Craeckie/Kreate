@@ -38,6 +38,11 @@ object AndroidVrStreamHelper {
         "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
 
     /**
+     * @param vrPoTokenResult optional PO token result from [com.metrolist.music.utils.potoken.PoTokenGenerator].
+     *   When non-null its [visitorData][org.schabi.newpipe.extractor.services.youtube.PoTokenResult.visitorData]
+     *   is used directly (skipping the extra visitor_id round-trip) and
+     *   `serviceIntegrityDimensions.poToken` is added to the request body so YouTube's
+     *   bot-detection challenge is satisfied.
      * @return the raw `player` response as a nanojson [JsonObject], matching the
      * shape returned by NewPipe's helpers so it slots into the existing parse path.
      */
@@ -45,7 +50,8 @@ object AndroidVrStreamHelper {
         contentCountry: ContentCountry,
         localization: Localization,
         videoId: String,
-        cpn: String
+        cpn: String,
+        vrPoTokenResult: org.schabi.newpipe.extractor.services.youtube.PoTokenResult? = null
     ): JsonObject {
         val info = InnertubeClientRequestInfo.ofAndroidClient().apply {
             clientInfo.clientName = CLIENT_NAME
@@ -66,16 +72,17 @@ object AndroidVrStreamHelper {
         )
         headers.putAll( YoutubeParsingHelper.getClientHeaders( CLIENT_ID, CLIENT_VERSION ) )
 
-        // A valid visitorData must always be passed to get a valid player response.
-        info.clientInfo.visitorData = YoutubeParsingHelper.getVisitorDataFromInnertube(
-            info,
-            localization,
-            contentCountry,
-            headers,
-            YoutubeParsingHelper.YOUTUBEI_V1_URL,
-            null,
-            false
-        )
+        // If a PO token is available use its visitorData directly; otherwise fetch a fresh one.
+        info.clientInfo.visitorData = vrPoTokenResult?.visitorData
+            ?: YoutubeParsingHelper.getVisitorDataFromInnertube(
+                info,
+                localization,
+                contentCountry,
+                headers,
+                YoutubeParsingHelper.YOUTUBEI_V1_URL,
+                null,
+                false
+            )
 
         val builder = YoutubeParsingHelper.prepareJsonBuilder(
             localization, contentCountry, info, null
@@ -84,6 +91,13 @@ object AndroidVrStreamHelper {
                .value( "cpn", cpn )
                .value( "contentCheckOk", true )
                .value( "racyCheckOk", true )
+
+        // Attach the player PO token when provided so YouTube's bot-detection is satisfied.
+        if ( vrPoTokenResult != null ) {
+            builder.`object`( "serviceIntegrityDimensions" )
+                   .value( "poToken", vrPoTokenResult.playerRequestPoToken )
+                   .end()
+        }
 
         val body = JsonWriter.string( builder.done() ).toByteArray( StandardCharsets.UTF_8 )
         // android_vr uses the regular www.youtube.com host (not the gapis host).

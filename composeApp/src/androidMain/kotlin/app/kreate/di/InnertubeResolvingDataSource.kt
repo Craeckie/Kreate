@@ -52,6 +52,8 @@ import org.schabi.newpipe.extractor.localization.ContentCountry
 import org.schabi.newpipe.extractor.localization.Localization
 import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
 import org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper
+import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
+import com.metrolist.music.utils.potoken.PoTokenGenerator
 import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.atomics.AtomicReference
@@ -75,6 +77,7 @@ private fun methodName(method: Int): String = when (method) {
 private val justInserted = AtomicReference("")
 private val cachedStreamUrl = ConcurrentHashMap<String, StreamCache>()
 private val logger = Logger.withTag("dataspec")
+private val poTokenGenerator by lazy { PoTokenGenerator() }
 private val jsonParser =
     Json {
         ignoreUnknownKeys = true
@@ -239,7 +242,8 @@ private suspend fun makeStreamCache(
     songId: String,
     isConnectionMetered: Boolean,
     audioQuality: AudioQualityFormat,
-    method: Int = METHOD_ANDROID_VR
+    method: Int = METHOD_ANDROID_VR,
+    poToken: PoTokenResult? = null
 ): StreamCache {
     logger.v { "Getting online stream url for \"$songId\" with method ${methodName(method)}" }
     logger.d { "Is connection metered: $isConnectionMetered" }
@@ -252,8 +256,8 @@ private suspend fun makeStreamCache(
             ContentCountry(regionCode) to Localization(languageCode)
         }
         val jsonResponse = when (method) {
-            METHOD_ANDROID_VR -> AndroidVrStreamHelper.getAndroidVrPlayerResponse(gl, hl, songId, cpn)
-            else              -> YoutubeStreamHelper.getIosPlayerResponse(gl, hl, songId, cpn, null)
+            METHOD_ANDROID_VR -> AndroidVrStreamHelper.getAndroidVrPlayerResponse(gl, hl, songId, cpn, poToken)
+            else              -> YoutubeStreamHelper.getIosPlayerResponse(gl, hl, songId, cpn, poToken)
         }
         val serializerClass = Class.forName("me.knighthat.internal.response.PlayerResponseImpl$\$serializer")
         val serializerInstance = serializerClass.getDeclaredField("INSTANCE").get(null) as KSerializer<*>
@@ -287,11 +291,29 @@ private suspend fun makeStreamCache(
                 (response.streamingData?.expiresInSeconds?.toLong()?.times(1000L) ?: 1.hours.inWholeMilliseconds)
             StreamCache(cpn, contentLength, streamUrl, expiredTimeMillis)
         } else
-        // Try again with IOS setup
-            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
+        // Try again with IOS setup, carrying through any PO token we already have
+            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken )
     } catch( e: Exception ) {
-        if( method == METHOD_ANDROID_VR )
-            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS )
+        if( method == METHOD_ANDROID_VR ) {
+            // YouTube bot-detection: retry VR with a PO token before falling back to IOS
+            if( e is LoginRequiredException && poToken == null ) {
+                logger.i { "LOGIN_REQUIRED on VR for $songId — generating PO token and retrying" }
+                val pot = tryGetPoToken( songId )
+                return if( pot != null )
+                    makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID_VR, pot )
+                else
+                    makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, null )
+            }
+            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken )
+        }
+
+        // IOS also returned LOGIN_REQUIRED without a PO token — try once more with one
+        if( e is LoginRequiredException && poToken == null ) {
+            logger.i { "LOGIN_REQUIRED on IOS for $songId — generating PO token and retrying" }
+            val pot = tryGetPoToken( songId )
+            if( pot != null )
+                return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, pot )
+        }
 
         when( e ) {
             is UnknownHostException,
@@ -310,6 +332,26 @@ private suspend fun makeStreamCache(
         }
 
         throw e
+    }
+}
+
+private fun tryGetPoToken( songId: String ): PoTokenResult? {
+    return try {
+        val visitorData = Preferences.YOUTUBE_VISITOR_DATA.value
+            .takeIf { it.isNotEmpty() } ?: run {
+                logger.w { "No visitorData available for PO token generation" }
+                return null
+            }
+        val metrolistPot = poTokenGenerator.getWebClientPoToken( songId, visitorData )
+            ?: return null
+        PoTokenResult(
+            visitorData,
+            metrolistPot.playerRequestPoToken,
+            metrolistPot.streamingDataPoToken
+        )
+    } catch( e: Exception ) {
+        logger.w { "PO token generation failed for $songId: ${e.message}" }
+        null
     }
 }
 
