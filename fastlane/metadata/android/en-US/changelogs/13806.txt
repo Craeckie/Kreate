@@ -1,0 +1,1 @@
+Build & CI improvements: release APKs now correctly named "Kreate Fixed-*", changelogs embedded directly in GitHub releases, signing config aligned with CI secrets, applicationId made explicit as me.knighthat.kreate.fix.
