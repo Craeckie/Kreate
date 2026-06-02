@@ -182,8 +182,7 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "me.knighthat.kreate"
-        applicationIdSuffix = ".fix"
+        applicationId = "me.knighthat.kreate.fix"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.compileSdk.get().toInt()
 
@@ -197,15 +196,17 @@ android {
 
     signingConfigs {
         create( "production" ) {
-            storeFile = file("$rootDir/.ignore.d/keystores/production.jks")
-            keyAlias = "kreate"
-            storePassword = System.getenv( "STORE_PASSWORD" )
+            val ksFile = System.getenv( "KEYSTORE_FILE" ) ?: "$rootDir/.ignore.d/keystores/production.jks"
+            storeFile = file( ksFile )
+            keyAlias = System.getenv( "KEY_ALIAS" ) ?: "kreate"
+            storePassword = System.getenv( "KEYSTORE_PASSWORD" ) ?: System.getenv( "STORE_PASSWORD" )
             keyPassword = System.getenv( "KEY_PASSWORD" )
         }
         create( "nightly" ) {
-            storeFile = file("$rootDir/.ignore.d/keystores/nightly.jks")
-            keyAlias = "nightly"
-            storePassword = System.getenv( "STORE_PASSWORD" )
+            val ksFile = System.getenv( "KEYSTORE_FILE" ) ?: "$rootDir/.ignore.d/keystores/nightly.jks"
+            storeFile = file( ksFile )
+            keyAlias = System.getenv( "KEY_ALIAS" ) ?: "nightly"
+            storePassword = System.getenv( "KEYSTORE_PASSWORD" ) ?: System.getenv( "STORE_PASSWORD" )
             keyPassword = System.getenv( "KEY_PASSWORD" )
         }
     }

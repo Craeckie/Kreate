@@ -129,20 +129,20 @@ jobs:
     strategy:
       matrix:
         platform: [ 'Github' ]
-        # Kreate-release.apk
-        # Kreate-arm64.apk
-        # Kreate-arm32.apk
-        # Kreate-x86.apk
-        # Kreate-x86_64.apk
+        # Kreate Fixed-release.apk
+        # Kreate Fixed-arm64-v8a.apk
+        # Kreate Fixed-armeabi-v7a.apk
+        # Kreate Fixed-x86.apk
+        # Kreate Fixed-x86_64.apk
         architect: [ 'Universal', 'Arm64', 'Arm32', 'X86', 'X86_64' ]
         type: [ 'Release' ]
         include:
-          # Kreate-izzy.apk
+          # Kreate Fixed-izzy.apk
           - platform: Izzy
             architect: Universal
             type: Release
 
-          # Kreate-uncompressed.apk
+          # Kreate Fixed-uncompressed.apk
           - platform: Github
             architect: Universal
             type: Uncompressed
@@ -206,12 +206,26 @@ jobs:
           path: ${{ steps.build_path.outputs.path }}/*.apk
 
   upload-to-release:
-    needs: [build_time, versioning, build-complex]
+    needs: [versioning, build-complex]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - uses: actions/checkout@v6
+
+      - name: Read changelog
+        id: changelog
+        env:
+          VERSION_CODE: ${{ needs.versioning.outputs.code }}
+        run: |
+          FILE_PATH="fastlane/metadata/android/en-US/changelogs/${VERSION_CODE}.txt"
+          {
+            echo "content<<EOF"
+            cat "$FILE_PATH"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Download signed APKs
         uses: actions/download-artifact@v8
         with:
@@ -224,16 +238,15 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: '*.apk'
-          # Name: v0.0.1-20250303
-          name: v${{ needs.versioning.outputs.downstream }}-${{ needs.build_time.outputs.date }}
+          name: v${{ needs.versioning.outputs.downstream }}
           tag_name: v${{ needs.versioning.outputs.downstream }}
           make_latest: "true"
-          body: |           
+          body: |
             If you don't know what to download, please refer to article [Why are there multiple APKs?](https://kreate.knighthat.me/usr/FAQ/multiple-apks)
-            
+
             ## Changelogs
-            
-            You can read change logs on our [Blog](https://kreate.knighthat.me/blog/tags/release) website
+
+            ${{ steps.changelog.outputs.content }}
 
           token: ${{ secrets.GITHUB_TOKEN }}
           generate_release_notes: true

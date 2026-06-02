@@ -248,11 +248,13 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build with Gradle
+        env:
+          KEYSTORE_FILE: ${{ env.KEYSTORE_PATH }}/${{ env.KEYSTORE_FILENAME }}
         run: ./gradlew assembleGithubUniversalNightlyRelease
 
       - name: Get build path
         id: build_path
-        run: echo "path=composeApp/build/outputs/apk/githubUniversalNightly/release/Kreate-nightly.apk" >> $GITHUB_OUTPUT
+        run: echo "path=composeApp/build/outputs/apk/githubUniversalNightly/release/Kreate Fixed-nightly.apk" >> $GITHUB_OUTPUT
 
       - name: Upload artifact for uploading
         uses: actions/upload-artifact@v7
@@ -281,7 +283,7 @@ jobs:
         run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
 
   upload-to-release:
-    needs: [capture-time, build-github-nightly]
+    needs: [capture-time, prep, build-github-nightly]
 
     name: Upload to release
     runs-on: ubuntu-latest
@@ -292,12 +294,26 @@ jobs:
         with:
           name: apk
 
+      - name: Download changelogs
+        uses: actions/download-artifact@v8
+        with:
+          name: changelogs
+
+      - name: Read changelog
+        id: changelog
+        run: |
+          {
+            echo "content<<EOF"
+            cat "${{ needs.prep.outputs.filename }}"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Upload built APK to release
         # Skip this step when running with nektos/act
         if: ${{ !env.ACT }}
         uses: softprops/action-gh-release@v3
         with:
-          files: 'Kreate-nightly.apk'
+          files: 'Kreate Fixed-nightly.apk'
           # Name: v20250303 | Nightly build
           name: "${{ needs.capture-time.outputs.date }} | Nightly build"
           # Tag name: v2025.03.03
@@ -311,6 +327,10 @@ jobs:
             ---
 
             To download official release, please visit [releases/latest](https://github.com/knighthat/Kreate/releases/latest)
+
+            ## Changelogs
+
+            ${{ steps.changelog.outputs.content }}
 
           token: ${{ secrets.RELEASE_TOKEN }}
           generate_release_notes: true
