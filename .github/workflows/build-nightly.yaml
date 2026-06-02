@@ -305,6 +305,7 @@ jobs:
           DELIM="$(openssl rand -hex 8)"
           echo "content<<${DELIM}"                    >> $GITHUB_OUTPUT
           cat "${{ needs.prep.outputs.filename }}"    >> $GITHUB_OUTPUT
+          echo                                        >> $GITHUB_OUTPUT
           echo "${DELIM}"                             >> $GITHUB_OUTPUT
 
       - name: Upload built APK to release
