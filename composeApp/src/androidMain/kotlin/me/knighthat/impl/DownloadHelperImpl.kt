@@ -17,6 +17,8 @@ import androidx.media3.exoplayer.scheduler.Requirements
 import app.kreate.android.Preferences
 import app.kreate.android.coil3.ImageFactory
 import app.kreate.android.service.DownloadHelper
+import app.kreate.android.service.SongRematcher
+import app.kreate.android.service.player.RematchRequests
 import app.kreate.android.utils.isLocal
 import app.kreate.database.models.Song
 import app.kreate.di.CacheType
@@ -25,6 +27,7 @@ import coil3.request.allowHardware
 import coil3.request.bitmapConfig
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.service.MyDownloadService
+import it.fast4x.rimusic.service.UnplayableException
 import it.fast4x.rimusic.utils.asMediaItem
 import it.fast4x.rimusic.utils.asSong
 import it.fast4x.rimusic.utils.download
@@ -47,6 +50,7 @@ import kotlinx.coroutines.runBlocking
 import me.knighthat.utils.Toaster
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
+import java.util.Collections
 import java.util.concurrent.Executors
 
 
@@ -70,6 +74,75 @@ class DownloadHelperImpl(
                 SupervisorJob() +
                 CoroutineName(EXECUTOR_NAME)
     )
+    /** Tracks videoIds already attempted for download-rematch; prevents infinite retry loops. */
+    private val rematchedDownloads: MutableSet<String> = Collections.synchronizedSet(HashSet())
+
+    /** Walk the cause chain looking for [UnplayableException]. */
+    private fun findUnplayable( t: Throwable? ): UnplayableException? {
+        if( t == null ) return null
+        if( t is UnplayableException ) return t
+        return findUnplayable( t.cause )
+    }
+
+    /**
+     * When a download fails because the stored videoId is no longer available,
+     * search for a replacement (same logic as the player's auto-rematch):
+     *  - STRONG match → re-id in DB + restart download with new id.
+     *  - WEAK match   → show [RematchRequests] confirmation dialog; on
+     *                    acceptance re-id + restart download.
+     *  - No candidates → show a toast.
+     */
+    private fun launchDownloadRematch( songId: String ) {
+        if( !rematchedDownloads.add( songId ) ) return  // already attempted
+
+        coroutineScope.launch {
+            val deadSong: Song = Database.songTable.findById( songId ).first()
+                ?: run {
+                    Logger.w( "DownloadHelperImpl" ) { "Rematch: song $songId not in DB" }
+                    return@launch
+                }
+
+            Logger.i( "DownloadHelperImpl" ) { "Download rematch: searching replacement for $songId (${deadSong.title})" }
+            Toaster.i( context.getString( app.kreate.android.R.string.rematch_searching ) )
+            val candidates = SongRematcher.searchCandidates( deadSong )
+            val match      = SongRematcher.bestMatch( deadSong, candidates )
+
+            when {
+                match == null -> {
+                    Logger.w( "DownloadHelperImpl" ) { "Download rematch: no candidates found for $songId" }
+                    Toaster.w( context.getString( app.kreate.android.R.string.rematch_no_candidates ) )
+                }
+
+                match.confidence == SongRematcher.Confidence.STRONG -> {
+                    val newId = match.item.key
+                    Logger.i( "DownloadHelperImpl" ) { "Download rematch STRONG: $songId → $newId" }
+                    Database.reIdSong( songId, newId, match.item )
+                    // Remove the failed download entry, then re-download with new id
+                    removeDownload( deadSong.asMediaItem )
+                    addDownload( match.item.asMediaItem )
+                    Toaster.i( context.getString( app.kreate.android.R.string.rematch_replaced_unavailable_track ) )
+                }
+
+                else -> {
+                    Logger.i( "DownloadHelperImpl" ) { "Download rematch WEAK: asking user for $songId" }
+                    RematchRequests.emit(
+                        RematchRequests.Request(
+                            deadSong   = deadSong,
+                            candidates = candidates,
+                            onAccepted = { chosen ->
+                                val newId = chosen.key
+                                coroutineScope.launch {
+                                    Database.reIdSong( songId, newId, chosen )
+                                    removeDownload( deadSong.asMediaItem )
+                                    addDownload( chosen.asMediaItem )
+                                }
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     override val downloads: MutableStateFlow<Map<String, Download>>
     override val downloadManager by lazy {
@@ -78,7 +151,19 @@ class DownloadHelperImpl(
                 downloadManager: DownloadManager,
                 download: Download,
                 finalException: Exception?
-            ) = syncDownloads(download)
+            ) {
+                syncDownloads( download )
+                // Clear rematch guard on success so a future failure of the same id
+                // can re-trigger (otherwise the guard set grows unboundedly).
+                if( download.state == Download.STATE_COMPLETED ) {
+                    rematchedDownloads.remove( download.request.id )
+                }
+                if( download.state == Download.STATE_FAILED
+                    && findUnplayable( finalException ) != null
+                ) {
+                    launchDownloadRematch( download.request.id )
+                }
+            }
 
             override fun onDownloadRemoved(
                 downloadManager: DownloadManager,

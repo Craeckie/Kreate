@@ -830,6 +830,7 @@ class StatefulPlayerImpl(
                 )
 
             logger.i { "Rematch: searching replacement for $deadId (${deadSong.title})" }
+            Toaster.i( context.getString( R.string.rematch_searching ) )
             val candidates = SongRematcher.searchCandidates( deadSong )
             val match      = SongRematcher.bestMatch( deadSong, candidates )
 
@@ -849,6 +850,7 @@ class StatefulPlayerImpl(
                         clearCachedStreamUrlOf( deadId )
                         seekToDefaultPosition()
                         prepare()
+                        play()
                     }
                     Toaster.i( context.getString( R.string.rematch_replaced_unavailable_track ) )
                 }
@@ -862,8 +864,8 @@ class StatefulPlayerImpl(
                             candidates = candidates,
                             onAccepted = { chosen ->
                                 val newId = chosen.key
-                                Database.reIdSong( deadId, newId, chosen )
                                 coroutineScope.launch {
+                                    Database.reIdSong( deadId, newId, chosen )
                                     withContext( Dispatchers.Main ) {
                                         val idx = currentMediaItemIndex
                                         if( getMediaItemAt( idx ).mediaId == deadId ) {
@@ -871,6 +873,7 @@ class StatefulPlayerImpl(
                                             clearCachedStreamUrlOf( deadId )
                                             seekToDefaultPosition()
                                             prepare()
+                                            play()
                                         }
                                     }
                                 }
