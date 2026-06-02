@@ -148,10 +148,18 @@ class PlaybackService:
     override fun onStartCommand( intent: Intent?, flags: Int, startId: Int ): Int {
         logger.v { "Received command ${intent?.action}" }
 
+        // Handle all Kreate-specific actions here and return START_STICKY directly,
+        // WITHOUT calling super.onStartCommand(). For custom actions, super would call
+        // MediaSessionService.stopSelfSafely() which tries startForeground() before
+        // stopping — that throws ForegroundServiceStartNotAllowedException (API 31+)
+        // when the service is not currently in the foreground state.
+        // super.onStartCommand() is only needed for media-button intents (null action
+        // or Intent.ACTION_MEDIA_BUTTON) that Media3 handles internally.
         when( intent?.action ) {
             ACTION_RESTART -> {
                 player.pause()
                 stopSelf()
+                return START_NOT_STICKY
             }
             ACTION_LIKE -> {
                 val mediaItem = player.currentMediaItem
@@ -161,17 +169,18 @@ class PlaybackService:
                     songTable.toggleLike( mediaItem.mediaId )
                     MyDownloadHelper.autoDownloadWhenLiked( mediaItem )
                 }
+                return START_STICKY
             }
-            ACTION_DOWNLOAD -> downloadCurrentMediaItem()
-            ACTION_UPDATE_MEDIA_CONTROL -> updateMediaControl()
+            ACTION_DOWNLOAD -> { downloadCurrentMediaItem(); return START_STICKY }
+            ACTION_UPDATE_MEDIA_CONTROL -> { updateMediaControl(); return START_STICKY }
 
-            PLAYER_ACTION_PLAY -> player.play()
-            PLAYER_ACTION_PAUSE -> player.pause()
-            PLAYER_ACTION_NEXT -> player.seekToNext()
-            PLAYER_ACTION_PREVIOUS -> player.seekToPrevious()
-            PLAYER_ACTION_CYCLE_REPEAT -> player.cycleRepeatMode()
-            PLAYER_ACTION_TOGGLE_SHUFFLE -> player.toggleShuffleMode()
-            PLAYER_ACTION_TOGGLE_RADIO -> Preferences.PLAYER_ACTION_START_RADIO.flip()
+            PLAYER_ACTION_PLAY -> { player.play(); return START_STICKY }
+            PLAYER_ACTION_PAUSE -> { player.pause(); return START_STICKY }
+            PLAYER_ACTION_NEXT -> { player.seekToNext(); return START_STICKY }
+            PLAYER_ACTION_PREVIOUS -> { player.seekToPrevious(); return START_STICKY }
+            PLAYER_ACTION_CYCLE_REPEAT -> { player.cycleRepeatMode(); return START_STICKY }
+            PLAYER_ACTION_TOGGLE_SHUFFLE -> { player.toggleShuffleMode(); return START_STICKY }
+            PLAYER_ACTION_TOGGLE_RADIO -> { Preferences.PLAYER_ACTION_START_RADIO.flip(); return START_STICKY }
         }
 
         return super.onStartCommand(intent, flags, startId)
