@@ -45,3 +45,4 @@ log-findings.md
 /NewPipeExtractor/
 /yt-dlp/
 .claude/settings.local.json
+rg

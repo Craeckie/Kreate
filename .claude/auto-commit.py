@@ -9,7 +9,12 @@ repo = '/workspace/Kreate'
 if not f.startswith(repo + '/'):
     sys.exit(0)
 
-subprocess.run(['git', '-C', repo, 'add', '-A'], capture_output=True)
+# Stage the specific edited file plus any other tracked modifications,
+# but do NOT add untracked files (avoids sweeping in stray artifacts).
+subprocess.run(['git', '-C', repo, 'add', '-u'], capture_output=True)
+if os.path.exists(f):
+    subprocess.run(['git', '-C', repo, 'add', f], capture_output=True)
+
 if subprocess.run(['git', '-C', repo, 'diff', '--cached', '--quiet'], capture_output=True).returncode == 0:
     sys.exit(0)
 
