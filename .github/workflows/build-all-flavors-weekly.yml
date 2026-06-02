@@ -220,11 +220,10 @@ jobs:
           VERSION_CODE: ${{ needs.versioning.outputs.code }}
         run: |
           FILE_PATH="fastlane/metadata/android/en-US/changelogs/${VERSION_CODE}.txt"
-          {
-            echo "content<<EOF"
-            cat "$FILE_PATH"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          DELIM="$(openssl rand -hex 8)"
+          echo "content<<${DELIM}" >> $GITHUB_OUTPUT
+          cat "$FILE_PATH"         >> $GITHUB_OUTPUT
+          echo "${DELIM}"          >> $GITHUB_OUTPUT
 
       - name: Download signed APKs
         uses: actions/download-artifact@v8

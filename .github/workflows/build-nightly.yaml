@@ -302,11 +302,10 @@ jobs:
       - name: Read changelog
         id: changelog
         run: |
-          {
-            echo "content<<EOF"
-            cat "${{ needs.prep.outputs.filename }}"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          DELIM="$(openssl rand -hex 8)"
+          echo "content<<${DELIM}"                    >> $GITHUB_OUTPUT
+          cat "${{ needs.prep.outputs.filename }}"    >> $GITHUB_OUTPUT
+          echo "${DELIM}"                             >> $GITHUB_OUTPUT
 
       - name: Upload built APK to release
         # Skip this step when running with nektos/act
