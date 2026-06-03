@@ -1,0 +1,1 @@
+Dynamic proxy support: proxy is detected on startup and reused automatically when it comes up. Auto-recover songs whose YouTube videoId became unavailable (rematch + re-download). Explicit play after auto-rematch. PO token retry on LOGIN_REQUIRED bot-detection. Fix ForegroundServiceStartNotAllowedException. Fix FOREIGN KEY crash when two rematch calls race on the same song.
