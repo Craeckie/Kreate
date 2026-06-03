@@ -1,0 +1,5 @@
+## 🐛 Fixes
+- 📋 **Crash report dialog** — dismissing the dialog now deletes the log file, so the same report no longer reappears on every subsequent launch
+- 🎵 **Queue bottom menu** — the context menu in the Queue screen now renders correctly
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-7...v2.2.0-8

@@ -52,8 +52,8 @@ import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.cache.Cache
 import androidx.navigation.NavController
-import app.kreate.android.LocalBottomMenu
 import app.kreate.android.Preferences
+import app.kreate.android.themed.common.component.BottomMenu
 import app.kreate.android.R
 import app.kreate.android.constant.MenuPage
 import app.kreate.android.service.player.StatefulPlayer
@@ -124,7 +124,7 @@ fun Queue(
     val (colorPalette, typography) = LocalAppearance.current
     val hapticFeedback = LocalHapticFeedback.current
     val menuState = LocalMenuState.current
-    val menu = LocalBottomMenu.current
+    val menu = remember { BottomMenu() }
 
     val rippleIndication = ripple(bounded = false)
 
@@ -220,6 +220,8 @@ fun Queue(
         // Dialog renders
         exportDialog.Render()
         (deleteDialog as Dialog).Render()
+        if ( menu.isVisible )
+            menu.BottomSheet( navController )
 
         Column {
             val queueType by Preferences.QUEUE_TYPE

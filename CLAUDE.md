@@ -72,6 +72,28 @@ This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and i
    - Same upstream version as last release → increment N: `versionCode = upstreamCode * 100 + N`, `versionName = "X.Y.Z-N"`
    - New upstream version → reset N to 1: `versionCode = newUpstreamCode * 100 + 1`, `versionName = "newX.Y.Z-1"`
 3. Create `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` with user-facing notes.
+   **Changelog format** — use Markdown with emoji sections (same style as `../CardPop`):
+   - Group entries under `##` headings that each open with a section emoji, e.g.:
+     `## ✨ New Features`, `## 🐛 Fixes`, `## 🎨 Visual`, `## 🔧 Changes`, `## 🗑️ Removed`
+   - Each bullet starts with a relevant emoji and uses **bold** for key feature/area names, e.g.:
+     `- 🎵 **Auto-rematch** — songs whose YouTube video became unavailable are re-linked automatically`
+   - Write for end users, not developers: skip internal class names, commit hashes, PR numbers.
+   - End the file with a full-changelog footer (update the tag range):
+     `**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v<prev>...v<this>`
+   - Omit sections that have no entries for this release.
+
+   Example:
+   ```
+   ## ✨ New Features
+   - 🔄 **Download rematch** — re-download a song after it has been re-linked to a new video
+
+   ## 🐛 Fixes
+   - 💥 Fix crash when two rematch calls raced on the same song
+   - 🔕 Fix ForegroundServiceStartNotAllowedException on some devices
+
+   **Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-6...v2.2.0-7
+   ```
+
 4. Commit both files and push to `main`.
 5. Create and push the release tag — this automatically triggers the **Build all flavors** workflow:
    ```bash

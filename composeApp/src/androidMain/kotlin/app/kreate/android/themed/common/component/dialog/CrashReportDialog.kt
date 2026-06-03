@@ -128,6 +128,11 @@ class CrashReportDialog(private val context: Context): Dialog() {
         }
     }
 
+    private fun dismissAndDelete() {
+        hideDialog()
+        crashlogFile.delete()
+    }
+
     @Composable
     override fun DialogFooter() {
         val (colorPalette, typography) = LocalAppearance.current
@@ -137,7 +142,7 @@ class CrashReportDialog(private val context: Context): Dialog() {
             modifier = Modifier.fillMaxWidth( .9f )
         ) {
             Button(
-                onClick = ::hideDialog,
+                onClick = ::dismissAndDelete,
                 colors = ButtonDefaults.buttonColors().copy(
                     containerColor = Color.Transparent
                 )
@@ -152,7 +157,7 @@ class CrashReportDialog(private val context: Context): Dialog() {
             val uriHandler = LocalUriHandler.current
             Button(
                 onClick = {
-                    hideDialog()
+                    dismissAndDelete()
 
                     writeCrashlogToClipboard()
 
