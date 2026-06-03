@@ -324,6 +324,12 @@ object Database : KoinComponent {
                 }
 
                 // ── Refresh metadata on the (now surviving) new row ───────────
+                // Guard: a concurrent reIdSong call may have already processed oldId
+                // (renamed it to a different newId), leaving newId absent from songs.
+                // If newId doesn't exist there is nothing to update — bail out cleanly
+                // rather than crashing on the FK-constrained map inserts below.
+                songTable.findByIdBlocking( newId ) ?: return@asyncTransaction
+
                 val title = replacement.info?.name ?: return@asyncTransaction
                 songTable.updateTitle( newId, title )
 
