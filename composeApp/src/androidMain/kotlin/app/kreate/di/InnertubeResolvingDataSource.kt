@@ -12,6 +12,7 @@ import androidx.media3.common.C
 import androidx.media3.datasource.DataSpec
 import app.kreate.android.Preferences
 import app.kreate.android.R
+import app.kreate.android.service.innertube.AndroidStreamHelper
 import app.kreate.android.service.innertube.AndroidVrStreamHelper
 import app.kreate.android.utils.CharUtils
 import app.kreate.android.utils.ConnectivityUtils
@@ -63,10 +64,12 @@ import kotlin.time.Duration.Companion.seconds
 
 
 private const val METHOD_ANDROID_VR = 0
+private const val METHOD_ANDROID = 1
 private const val METHOD_IOS = 2
 
 private fun methodName(method: Int): String = when (method) {
     METHOD_ANDROID_VR -> "ANDROID_VR"
+    METHOD_ANDROID    -> "ANDROID"
     METHOD_IOS        -> "IOS"
     else              -> "unknown($method)"
 }
@@ -205,6 +208,28 @@ private fun extractFormat(
     }
 }
 
+/**
+ * Pick a **progressive** (muxed audio+video) format with a direct, pot-free URL — used only for
+ * the [METHOD_ANDROID] last-resort fallback. Prefers itag 18 (360p, smallest), then 22, then any
+ * progressive format that carries a usable url. ExoPlayer plays the muxed file and uses its audio
+ * track; quality is modest but it streams to the end when adaptive audio is pot-blocked.
+ */
+@Throws(PlayableFormatNotFoundException::class)
+private fun extractProgressiveFormat(
+    streamingData: PlayerResponse.StreamingData?
+): PlayerResponse.StreamingData.Format {
+    val progressive = streamingData?.formats
+        ?.fastFilter { !it.url.isNullOrBlank() }
+        .orEmpty()
+    if( progressive.isEmpty() )
+        throw PlayableFormatNotFoundException()
+
+    return ( progressive.firstOrNull { it.itag.toInt() == 18 }
+        ?: progressive.firstOrNull { it.itag.toInt() == 22 }
+        ?: progressive.first() )
+        .also { logger.d { "extracted progressive format ${it.itag}" } }
+}
+
 @Throws(MissingDecipherKeyException::class)
 private fun extractStreamUrl( videoId: String, format: PlayerResponse.StreamingData.Format ): String =
     format.signatureCipher?.let { signatureCipher ->
@@ -282,6 +307,7 @@ private suspend fun makeStreamCache(
         }
         val jsonResponse = when (method) {
             METHOD_ANDROID_VR -> AndroidVrStreamHelper.getAndroidVrPlayerResponse(gl, hl, songId, cpn, poToken)
+            METHOD_ANDROID    -> AndroidStreamHelper.getAndroidPlayerResponse(gl, hl, songId, cpn)
             else              -> YoutubeStreamHelper.getIosPlayerResponse(gl, hl, songId, cpn, poToken)
         }
         val serializerClass = Class.forName("me.knighthat.internal.response.PlayerResponseImpl$\$serializer")
@@ -301,7 +327,11 @@ private suspend fun makeStreamCache(
         }
         //</editor-fold>
         //<editor-fold desc="Extract and validate stream url">
-        val format = extractFormat( response.streamingData, audioQuality, isConnectionMetered )
+        val format =
+            if( method == METHOD_ANDROID )
+                extractProgressiveFormat( response.streamingData )
+            else
+                extractFormat( response.streamingData, audioQuality, isConnectionMetered )
         val streamUrl = extractStreamUrl( songId, format )
         val validateResult = validateStreamUrl( streamUrl, format.contentLength?.toLong() )
         //</editor-fold>
@@ -311,21 +341,34 @@ private suspend fun makeStreamCache(
 
             logger.i { "Resolved $songId via ${methodName(method)}" }
 
-            val contentLength = format.contentLength?.toLong() ?: CHUNK_LENGTH
+            // Progressive (ANDROID itag 18/22) responses often omit contentLength in the JSON;
+            // recover it from the url's `clen` param, else leave UNSET so ExoPlayer reads to EOF
+            // (never CHUNK_LENGTH — that would truncate a progressive stream at 512KB).
+            val contentLength = format.contentLength?.toLong()
+                ?: Regex("[?&]clen=(\\d+)").find( streamUrl )?.groupValues?.get( 1 )?.toLongOrNull()
+                ?: C.LENGTH_UNSET.toLong()
             val expiredTimeMillis = System.currentTimeMillis() +
                 (response.streamingData?.expiresInSeconds?.toLong()?.times(1000L) ?: 1.hours.inWholeMilliseconds)
             StreamCache(cpn, contentLength, streamUrl, expiredTimeMillis)
-        } else if( method == METHOD_ANDROID_VR ) {
-            // VR's url didn't validate — fall back to IOS, giving it a PO token (IOS
-            // needs a GVS pot to stream past the teaser).
-            logger.i { "ANDROID_VR stream url for $songId failed validation; falling back to IOS" }
-            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
-        } else {
-            // IOS is the last usable client and its url is unstreamable (teaser-blocked /
-            // pot-blocked). Don't loop — surface as unplayable so onPlayerError's
-            // auto-rematch finds a playable alternative.
-            logger.w { "IOS stream url for $songId failed validation (teaser-blocked); marking unplayable" }
-            throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
+        } else when( method ) {
+            METHOD_ANDROID_VR -> {
+                // VR's url didn't validate — fall back to IOS, giving it a PO token (IOS
+                // needs a GVS pot to stream past the teaser).
+                logger.i { "ANDROID_VR stream url for $songId failed validation; falling back to IOS" }
+                makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
+            }
+            METHOD_IOS -> {
+                // IOS teaser-blocked — try the plain ANDROID client's pot-free progressive
+                // (itag 18/22) muxed stream as a last resort before giving up.
+                logger.i { "IOS stream url for $songId teaser-blocked; falling back to ANDROID progressive" }
+                makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID, null )
+            }
+            else -> {
+                // ANDROID progressive also failed — no playable url from any client. Surface as
+                // unplayable so onPlayerError's auto-rematch finds a playable alternative.
+                logger.w { "ANDROID progressive url for $songId failed validation; marking unplayable" }
+                throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
+            }
         }
     } catch( e: Exception ) {
         if( method == METHOD_ANDROID_VR ) {
@@ -349,6 +392,12 @@ private suspend fun makeStreamCache(
             val pot = tryGetPoToken( songId )
             if( pot != null )
                 return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, pot )
+        }
+
+        // IOS failed for any other reason — try the pot-free ANDROID progressive client last.
+        if( method == METHOD_IOS ) {
+            logger.i { "IOS failed for $songId (${e::class.simpleName}: ${e.message}); falling back to ANDROID progressive" }
+            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID, null )
         }
 
         when( e ) {

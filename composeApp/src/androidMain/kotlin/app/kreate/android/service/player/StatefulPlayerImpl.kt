@@ -831,7 +831,11 @@ class StatefulPlayerImpl(
 
             logger.i { "Rematch: searching replacement for $deadId (${deadSong.title})" }
             Toaster.i( context.getString( R.string.rematch_searching ) )
+            // Exclude the dead id and any id already attempted this session, so two
+            // equally-unplayable uploads of the same song can't ping-pong (A→B→A→…).
+            // rematchedSongs persists until a song reaches STATE_READY.
             val candidates = SongRematcher.searchCandidates( deadSong )
+                .filterNot { it.key == deadId || it.key in rematchedSongs }
             val match      = SongRematcher.bestMatch( deadSong, candidates )
 
             when {
