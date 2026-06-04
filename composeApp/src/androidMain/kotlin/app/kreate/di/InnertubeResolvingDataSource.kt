@@ -20,6 +20,7 @@ import app.kreate.database.models.Format
 import co.touchlab.kermit.Logger
 import com.grack.nanojson.JsonWriter
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.head
 import io.ktor.http.URLBuilder
 import io.ktor.http.isSuccess
@@ -224,17 +225,41 @@ private fun extractStreamUrl( videoId: String, format: PlayerResponse.StreamingD
     } ?: format.url!!
 //</editor-fold>
 //<editor-fold desc="Validators">
-private suspend fun validateStreamUrl( streamUrl: String ): Boolean =
-    get<HttpClient>(HttpClient::class.java)
-        .head( "$streamUrl&range=0-$CHUNK_LENGTH" )
-        .status
-        .also {
-            if( it.isSuccess() )
-                logger.d { "Stream url validated successfully" }
-            else
-                logger.w { "Stream url validation returns code ${it.value} - ${it.description}" }
+private suspend fun validateStreamUrl( streamUrl: String, contentLength: Long? ): Boolean {
+    val client = get<HttpClient>(HttpClient::class.java)
+
+    suspend fun probe( range: String ): Boolean =
+        try {
+            client.head( "$streamUrl&range=$range" )
+                .status
+                .also {
+                    if( it.isSuccess() )
+                        logger.d { "Stream url range $range validated successfully" }
+                    else
+                        logger.w { "Stream url range $range validation returns code ${it.value} - ${it.description}" }
+                }
+                .isSuccess()
+        } catch( e: ResponseException ) {
+            // The injected HttpClient has expectSuccess=true, so a non-2xx HEAD (e.g. the
+            // 403 a pot-blocked url returns past the teaser) is thrown rather than returned.
+            // Treat it as a failed probe instead of letting it escape as a raw error.
+            logger.w { "Stream url range $range rejected: HTTP ${e.response.status.value}" }
+            false
         }
-        .isSuccess()
+
+    // Always verify the teaser (first chunk) is reachable.
+    if( !probe( "0-$CHUNK_LENGTH" ) )
+        return false
+
+    // The teaser passing is a weak signal: YouTube serves the first ~512KB even for
+    // URLs that 403 on every later byte range (the missing-GVS-pot "stops at ~1 min"
+    // symptom). When the content is larger than the teaser, also probe a small range at
+    // the end of the file; a pot-blocked URL 403s here while a good URL returns 206.
+    if( contentLength != null && contentLength > CHUNK_LENGTH )
+        return probe( "${contentLength - 1024}-${contentLength - 1}" )
+
+    return true
+}
 //</editor-fold>
 //<editor-fold desc="Get response">
 @OptIn(ExperimentalSerializationApi::class)
@@ -278,7 +303,7 @@ private suspend fun makeStreamCache(
         //<editor-fold desc="Extract and validate stream url">
         val format = extractFormat( response.streamingData, audioQuality, isConnectionMetered )
         val streamUrl = extractStreamUrl( songId, format )
-        val validateResult = validateStreamUrl( streamUrl )
+        val validateResult = validateStreamUrl( streamUrl, format.contentLength?.toLong() )
         //</editor-fold>
 
         return if( validateResult ) {
@@ -290,9 +315,18 @@ private suspend fun makeStreamCache(
             val expiredTimeMillis = System.currentTimeMillis() +
                 (response.streamingData?.expiresInSeconds?.toLong()?.times(1000L) ?: 1.hours.inWholeMilliseconds)
             StreamCache(cpn, contentLength, streamUrl, expiredTimeMillis)
-        } else
-        // Try again with IOS setup, carrying through any PO token we already have
-            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken )
+        } else if( method == METHOD_ANDROID_VR ) {
+            // VR's url didn't validate — fall back to IOS, giving it a PO token (IOS
+            // needs a GVS pot to stream past the teaser).
+            logger.i { "ANDROID_VR stream url for $songId failed validation; falling back to IOS" }
+            makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
+        } else {
+            // IOS is the last usable client and its url is unstreamable (teaser-blocked /
+            // pot-blocked). Don't loop — surface as unplayable so onPlayerError's
+            // auto-rematch finds a playable alternative.
+            logger.w { "IOS stream url for $songId failed validation (teaser-blocked); marking unplayable" }
+            throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
+        }
     } catch( e: Exception ) {
         if( method == METHOD_ANDROID_VR ) {
             // YouTube bot-detection: retry VR with a PO token before falling back to IOS
@@ -304,7 +338,9 @@ private suspend fun makeStreamCache(
                 else
                     makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, null )
             }
-            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken )
+            logger.i { "ANDROID_VR failed for $songId (${e::class.simpleName}: ${e.message}); falling back to IOS" }
+            // VR couldn't serve this video; IOS may, but only with a GVS PO token.
+            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
         }
 
         // IOS also returned LOGIN_REQUIRED without a PO token — try once more with one
