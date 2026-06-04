@@ -24,6 +24,9 @@ from collections import defaultdict
 # ── Patterns ────────────────────────────────────────────────────────────────
 
 RE_TS = re.compile(r"(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
+# YouTube video IDs are exactly 11 chars of [A-Za-z0-9_-]; used to pull the id
+# out of a matched line's capture groups (client names / ranges / reasons won't match).
+RE_VID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 PATTERNS = [
     # YTPlayerUtils info/debug (metrolist path — kept for compatibility with older builds)
@@ -40,6 +43,18 @@ PATTERNS = [
     ("vr_resolved",        re.compile(r"Resolved (\S+) via (\S+)")),
     ("vr_method",          re.compile(r"Getting online stream url for \"(\S+)\" with method (\S+)")),
     ("unavailable",        re.compile(r"Playability status not OK.*This video is unavailable")),
+    # current fallback/validation/rematch flow (InnertubeResolvingDataSource + StatefulPlayerImpl)
+    ("vr_fallback",        re.compile(r"ANDROID_VR failed for (\S+) \(([^)]+)\); falling back to IOS")),
+    ("range_rejected",     re.compile(r"Stream url range (\S+) rejected: HTTP (\d+)")),
+    ("marking_unplayable", re.compile(r"(\S+) stream url for (\S+) failed validation")),
+    ("unplayable_exc",     re.compile(r"UnplayableException: (.+)")),
+    ("rematch_attempt",    re.compile(r"Song unplayable \(([^)]+)\); attempting rematch for (\S+)")),
+    ("rematch_search",     re.compile(r"Rematch(?:.*)?: searching replacement for (\S+) \((.+)\)")),
+    ("rematch_strong",     re.compile(r"Rematch STRONG: swapping (\S+) (?:→|->) (\S+)")),
+    ("rematch_weak",       re.compile(r"Rematch WEAK: asking user to confirm replacement for (\S+)")),
+    ("rematch_none",       re.compile(r"Rematch: no candidates found for (\S+)")),
+    ("got_403",            re.compile(r"Got HTTP 403 for (\S+); clearing")),
+    ("http_403_persisted", re.compile(r"HTTP 403 for (\S+) persisted")),
     # Metrolist-path failure signatures (from logcat 13803 analysis)
     ("potoken_asset_miss", re.compile(r"FileNotFoundException: po_token\.html")),
     ("ios_override_403",   re.compile(r"<-- 403 https://\S+[?&]c=IOS")),
@@ -74,6 +89,14 @@ PATTERNS = [
 def ts_of(line):
     m = RE_TS.search(line)
     return m.group(1) if m else "??"
+
+
+def vid_of(groups):
+    """Pick the YouTube video id out of a pattern's capture groups, if present."""
+    for g in groups:
+        if g and RE_VID.match(g):
+            return g
+    return None
 
 
 def analyze(lines, filter_video=None, verbose=False):
@@ -177,6 +200,32 @@ def analyze(lines, filter_video=None, verbose=False):
         issues.append(f"  [WARN] 403 on stream URL ({counts['http_403']}x) — "
                       f"likely missing PO token on WEB/IOS client")
 
+    if counts["vr_fallback"]:
+        issues.append(f"  [INFO] ANDROID_VR fell back to IOS {counts['vr_fallback']}x "
+                      f"— VR returned UNPLAYABLE/empty; IOS attempted next")
+
+    if counts["marking_unplayable"]:
+        vids = sorted({g[1] for _, t, g, _ in events if t == "marking_unplayable" and len(g) > 1})
+        issues.append(f"  [WARN] IOS stream teaser-blocked → marked unplayable "
+                      f"({counts['marking_unplayable']}x){' for ' + ', '.join(vids) if vids else ''} "
+                      f"— VR-unplayable + IOS pot-blocked; routed to auto-rematch")
+
+    # Rematch ping-pong: A→B and B→A both present means two dead uploads swap forever.
+    swaps = [(g[0], g[1]) for _, t, g, _ in events if t == "rematch_strong" and len(g) > 1]
+    pingpong = sorted({frozenset(p) for p in swaps if (p[1], p[0]) in swaps})
+    if pingpong:
+        pairs = "; ".join(" ↔ ".join(sorted(p)) for p in pingpong)
+        issues.append(f"  [ERROR] Rematch PING-PONG ({pairs}) — STRONG rematch keeps swapping "
+                      f"between equally-unplayable uploads of the same song; song never plays")
+
+    if counts["rematch_weak"]:
+        vids = sorted({g[0] for _, t, g, _ in events if t == "rematch_weak"})
+        issues.append(f"  [INFO] Rematch asked user to confirm (WEAK) for {', '.join(vids)}")
+
+    if counts["http_403_persisted"]:
+        issues.append(f"  [ERROR] 403 persisted after re-resolution {counts['http_403_persisted']}x "
+                      f"— stuck song (older-build signature; current build marks unplayable instead)")
+
     if counts["vr_resolved"]:
         vr_wins = [g for _, t, g, _ in events if t == "vr_resolved"]
         client_wins = defaultdict(int)
@@ -214,17 +263,26 @@ def analyze(lines, filter_video=None, verbose=False):
         "exo_error", "ktor_400", "exception", "success_debug",
         # dataspec / VR resolver path
         "vr_resolved", "unavailable", "potoken_asset_miss", "ios_override_403",
+        # current fallback / validation / rematch flow
+        "vr_fallback", "range_rejected", "marking_unplayable", "unplayable_exc",
+        "rematch_attempt", "rematch_search", "rematch_strong", "rematch_weak",
+        "rematch_none", "got_403", "http_403_persisted",
         # song-info parse + image loading + UI
         "songinfo_upsert_fail", "missing_field", "image_null",
         "thumb_oversized", "changelog_crash",
     }
 
     shown = 0
+    current_vid = None  # carried forward so id-less lines (e.g. EXO ERROR) get attributed
     for ts, tag, groups, raw in events:
+        v = vid_of(groups)
+        if v:
+            current_vid = v
         if verbose or tag in SHOW_TAGS:
             label = tag.upper().replace("_", " ")
             detail = " | ".join(str(g) for g in groups) if groups else ""
-            print(f"  {ts}  [{label}]  {detail}")
+            vid = v or (f"~{current_vid}" if current_vid else "?")  # ~ = inferred from context
+            print(f"  {ts}  [{vid:12}] [{label}]  {detail}")
             shown += 1
 
     if shown == 0:
