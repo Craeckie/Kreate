@@ -405,18 +405,29 @@ fun Player(
 
     val sleepTimerMillisLeft by player.sleepTimerRemaining().collectAsState(initial = null)
 
-    val positionAndDuration by player.positionAndDurationState()
+    // Keep the polled position as a State (don't read its value here): reading it at
+    // the top of this composable would recompose the whole Player screen ~twice a
+    // second. Instead it is threaded down to the seek bar / progress draws, which read
+    // it in their own (cheap) scope.
+    val positionAndDuration = player.positionAndDurationState()
     var timeRemaining by remember { mutableLongStateOf(0) }
-    timeRemaining = positionAndDuration.second - positionAndDuration.first
 
-    if (sleepTimerMillisLeft != null)
-        if (sleepTimerMillisLeft!! < timeRemaining && !delayedSleepTimer)  {
-            player.startSleepTimer(
-                timeRemaining.toDuration( DurationUnit.MILLISECONDS )
-            )
-            delayedSleepTimer = true
-            Toaster.n( R.string.info_sleep_timer_delayed_at_end_of_song )
+    // Observe position off the composition: update the "time remaining" and the
+    // end-of-song sleep-timer handoff without forcing a recomposition every tick.
+    LaunchedEffect(Unit) {
+        snapshotFlow { positionAndDuration.value }.collect { (position, duration) ->
+            timeRemaining = duration - position
+
+            val sleepLeft = sleepTimerMillisLeft
+            if (sleepLeft != null && sleepLeft < timeRemaining && !delayedSleepTimer) {
+                player.startSleepTimer(
+                    timeRemaining.toDuration( DurationUnit.MILLISECONDS )
+                )
+                delayedSleepTimer = true
+                Toaster.n( R.string.info_sleep_timer_delayed_at_end_of_song )
+            }
         }
+    }
 
     val windowInsets = WindowInsets.systemBars
 
@@ -646,8 +657,6 @@ fun Player(
                 playerBackgroundColors == PlayerBackgroundColors.CoverColorGradient ||
                 playerBackgroundColors == PlayerBackgroundColors.AnimatedGradient
 
-        println("Player url mediaitem ${mediaItem.mediaMetadata.artworkUri}")
-        println("Player url binder ${player.currentWindow?.mediaItem?.mediaMetadata?.artworkUri}")
     LaunchedEffect(mediaItem.mediaId, updateBrush) {
         if (playerBackgroundColors == PlayerBackgroundColors.CoverColorGradient ||
             playerBackgroundColors == PlayerBackgroundColors.CoverColor ||
@@ -667,7 +676,6 @@ fun Player(
                     bitmap,
                     !lightTheme
                 ) ?: color
-                println("Player INSIDE getting dynamic color $dynamicColorPalette")
 
                 val palette = Palette.from(bitmap).generate()
 
@@ -680,7 +688,6 @@ fun Player(
                 darkMuted = palette.getDarkMutedColor( dynamicColorPalette.accent.toArgb() )
             }
         }
-        println("Player after getting dynamic color $dynamicColorPalette")
     }
 
     var sizeShader by remember { mutableStateOf(Size.Zero) }
@@ -1205,8 +1212,8 @@ fun Player(
                                 color = color.favoritesOverlay,
                                 topLeft = Offset.Zero,
                                 size = Size(
-                                    width = positionAndDuration.first.toFloat() /
-                                            positionAndDuration.second.absoluteValue * size.width,
+                                    width = positionAndDuration.value.first.toFloat() /
+                                            positionAndDuration.value.second.absoluteValue * size.width,
                                     height = size.maxDimension
                                 )
                             )
@@ -1756,8 +1763,8 @@ fun Player(
                                 color = color.favoritesOverlay,
                                 topLeft = Offset.Zero,
                                 size = Size(
-                                    width = positionAndDuration.first.toFloat() /
-                                            positionAndDuration.second.absoluteValue * size.width,
+                                    width = positionAndDuration.value.first.toFloat() /
+                                            positionAndDuration.value.second.absoluteValue * size.width,
                                     height = size.maxDimension
                                 )
                             )
