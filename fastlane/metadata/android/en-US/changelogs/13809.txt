@@ -1,0 +1,5 @@
+## 🐛 Fixes
+- 🎵 **Hard-to-play songs now play** — songs that used to start, play for a few seconds, then go silent (or get stuck swapping between two unavailable versions) now fall back to a lower-quality stream that plays all the way through
+- 🔁 **No more rematch ping-pong** — auto-rematch no longer bounces back and forth between two unavailable uploads of the same song
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-8...v2.2.0-9
