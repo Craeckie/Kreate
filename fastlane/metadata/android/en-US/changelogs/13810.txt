@@ -1,0 +1,4 @@
+## 🐛 Fixes
+- 🔋 **Better battery life during playback** — the Player screen no longer needlessly redraws about twice a second while a song is playing, reducing battery drain
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-9...v2.2.0-10
