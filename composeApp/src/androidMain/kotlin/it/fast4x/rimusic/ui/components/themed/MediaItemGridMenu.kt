@@ -345,9 +345,7 @@ fun MediaItemGridMenu (
 
     var timeRemaining by remember { mutableLongStateOf(0) }
 
-    if (positionAndDuration != null) {
-        timeRemaining = positionAndDuration.value.second - positionAndDuration.value.first
-    }
+    timeRemaining = positionAndDuration.value.second - positionAndDuration.value.first
 
     //val timeToStop = System.currentTimeMillis()
 

@@ -144,7 +144,7 @@ fun NextVisualizer( player: StatefulPlayer = koinInject() ) {
         } else {
 
             val visualizerView = VisualizerView(context)
-            val helper = VisualizerHelper(player.audioSessionId ?: 0)
+            val helper = VisualizerHelper(player.audioSessionId)
 
             val visualizersList = getVisualizers()
             var currentVisualizer by Preferences.PLAYER_CURRENT_VISUALIZER
@@ -242,7 +242,7 @@ fun getVisualizers( player: StatefulPlayer = koinInject() ): List<Painter> {
     val coroutineScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         val thumbnailUrl: String =  player
-                                          ?.currentWindow
+                                          .currentWindow
                                           ?.mediaItem
                                           ?.mediaMetadata
                                           ?.artworkUri

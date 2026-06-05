@@ -202,11 +202,7 @@ object PlayerJsFetcher : KoinComponent {
             return null
         }
 
-        val body = response.body?.string()
-        if (body == null) {
-            logger.e("iframe_api response body is null")
-            return null
-        }
+        val body = response.body.string()
 
         logger.d("iframe_api body length: ${body.length}")
         logger.v("iframe_api body preview: ${body.take(200)}...")
@@ -240,11 +236,7 @@ object PlayerJsFetcher : KoinComponent {
             return null
         }
 
-        val body = response.body?.string()
-        if (body == null) {
-            logger.e("player.js response body is null")
-            return null
-        }
+        val body = response.body.string()
 
         logger.d("player.js downloaded: ${body.length} chars")
         return body

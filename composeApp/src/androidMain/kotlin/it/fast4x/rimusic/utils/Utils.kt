@@ -353,7 +353,6 @@ fun isNetworkConnected(context: Context): Boolean {
 
 fun isNetworkAvailable(context: Context): Boolean {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        ?: return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         val networkInfo = cm.getNetworkCapabilities(cm.activeNetwork)
         // if no network is available networkInfo will be null
@@ -378,7 +377,6 @@ fun isNetworkAvailable(context: Context): Boolean {
 fun isNetworkAvailableComposable(): Boolean {
     val context = LocalContext.current
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        ?: return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         val networkInfo = cm.getNetworkCapabilities(cm.activeNetwork)
         // if no network is available networkInfo will be null
@@ -514,7 +512,7 @@ suspend fun downloadSyncedLyrics( song: Song ) {
 
     if( fetchedLyrics != null )
         Database.asyncTransaction {
-            lyricsTable.upsert( fetchedLyrics!! )
+            lyricsTable.upsert( fetchedLyrics )
         }
 }
 

@@ -542,7 +542,7 @@ fun HomeQuickPicks(
                                 items = relatedPage.songs
                                                    ?.distinctBy( Innertube.SongItem::key )
                                                    ?.filter {
-                                                       cachedSongs == null || cachedSongs.indexOf( it.key ) < 0
+                                                       cachedSongs.indexOf( it.key ) < 0
                                                    }
                                                    ?.dropLast( if( trending == null) 0 else 1 )
                                                    ?.map( Innertube.SongItem::asSong )

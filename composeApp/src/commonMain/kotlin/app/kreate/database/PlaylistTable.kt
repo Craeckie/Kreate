@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.RewriteQueriesToDropUnusedColumns
+import androidx.room.RoomWarnings
 import app.kreate.constant.PlaylistSortBy
 import app.kreate.constant.SortOrder
 import app.kreate.database.models.Artist
@@ -92,6 +93,7 @@ interface PlaylistTable: DatabaseTable<Playlist> {
         ORDER BY ROWID
         LIMIT :limit
     """)
+    @Suppress( RoomWarnings.QUERY_MISMATCH )   // thumbnailUrl is filled in elsewhere, not by this query
     fun allAsPreview( limit: Int = Int.MAX_VALUE ): Flow<List<PlaylistPreview>>
 
     /**
@@ -109,6 +111,7 @@ interface PlaylistTable: DatabaseTable<Playlist> {
         ORDER BY RANDOM()
         LIMIT :limit
     """)
+    @Suppress( RoomWarnings.QUERY_MISMATCH )   // thumbnailUrl is filled in elsewhere, not by this query
     fun allAsPreviewRandomized( limit: Int = Int.MAX_VALUE ): Flow<List<PlaylistPreview>>
 
     /**
@@ -201,6 +204,7 @@ interface PlaylistTable: DatabaseTable<Playlist> {
         ORDER BY SUM(S.total_playtime)
         LIMIT :limit
     """)
+    @Suppress( RoomWarnings.QUERY_MISMATCH )   // thumbnailUrl is filled in elsewhere, not by this query
     fun sortPreviewsByMostPlayed( limit: Int = Int.MAX_VALUE ): Flow<List<PlaylistPreview>>
 
     fun sortPreviewsByName( limit: Int = Int.MAX_VALUE ): Flow<List<PlaylistPreview>> =

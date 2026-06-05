@@ -50,7 +50,7 @@ suspend fun Innertube.chartsPageComplete(countryCode: String = "") = runCatching
 fun Innertube.PlaylistItem.Companion.fromComplete(renderer: MusicCarouselShelfRenderer): Innertube.PlaylistItem? {
 
     val thumbnail0 = renderer
-        .contents?.firstOrNull()?.musicTwoRowItemRenderer
+        .contents.firstOrNull()?.musicTwoRowItemRenderer
         ?.thumbnailRenderer
         ?.musicThumbnailRenderer
         ?.thumbnail
@@ -58,7 +58,7 @@ fun Innertube.PlaylistItem.Companion.fromComplete(renderer: MusicCarouselShelfRe
         ?.getBestQuality()?.toThumbnail()
 
     val thumbnail1 = renderer
-        .contents?.firstOrNull()?.musicResponsiveListItemRenderer
+        .contents.firstOrNull()?.musicResponsiveListItemRenderer
         ?.thumbnail
         ?.musicThumbnailRenderer
         ?.thumbnail
@@ -81,7 +81,7 @@ fun Innertube.PlaylistItem.Companion.fromComplete(renderer: MusicCarouselShelfRe
         ),
         channel = null,
         songCount = renderer
-            .contents?.size,
+            .contents.size,
         thumbnail = thumbnail0 ?: thumbnail1,
         isEditable = false
     ).takeIf { it.info?.endpoint?.browseId != null }
@@ -127,11 +127,11 @@ fun parseChart(data: SectionListRenderer?): Innertube.ChartsPage? {
         val listVideoItem: ArrayList<Innertube.VideoItem> = arrayListOf()
         val listArtistItem: ArrayList<Innertube.ArtistItem> = arrayListOf()
         var videoPlaylistId = ""
-        for (section in data.contents!!) {
+        for (section in data.contents) {
             if (section.musicCarouselShelfRenderer != null) {
                 val musicCarouselShelfRenderer = section.musicCarouselShelfRenderer
                 val pageType =
-                    musicCarouselShelfRenderer?.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.get(
+                    musicCarouselShelfRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.get(
                         0
                     )?.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType
                 if (pageType == "MUSIC_PAGE_TYPE_PLAYLIST" && musicCarouselShelfRenderer.numItemsPerColumn == null) {

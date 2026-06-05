@@ -482,7 +482,7 @@ fun HomeAlbums(
                                         },
                                         onAddToPlaylist = { playlistPreview ->
                                             position =
-                                                playlistPreview.songCount.minus(1) ?: 0
+                                                playlistPreview.songCount.minus(1)
                                             //Log.d("mediaItem", " maxPos in Playlist $it ${position}")
                                             if (position > 0) position++ else position =
                                                 0

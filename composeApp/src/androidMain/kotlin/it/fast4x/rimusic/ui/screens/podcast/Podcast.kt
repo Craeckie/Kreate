@@ -521,7 +521,7 @@ fun Podcast(
                                                     //NOT NECESSARY IN ONLINE PLAYLIST USE IMPORT
                                                     onAddToPlaylist = { playlistPreview ->
                                                         position =
-                                                            playlistPreview.songCount.minus(1) ?: 0
+                                                            playlistPreview.songCount.minus(1)
                                                         if (position > 0) position++ else position = 0
 
                                                         if (!isYouTubeSyncEnabled() || !playlistPreview.playlist.isYoutubePlaylist) {

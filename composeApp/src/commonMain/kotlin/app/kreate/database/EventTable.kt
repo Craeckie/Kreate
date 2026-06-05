@@ -3,6 +3,7 @@ package app.kreate.database
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.RewriteQueriesToDropUnusedColumns
+import androidx.room.RoomWarnings
 import androidx.room.Transaction
 import app.kreate.database.ext.EventWithSong
 import app.kreate.database.models.Album
@@ -153,6 +154,8 @@ interface EventTable: DatabaseTable<Event> {
         ORDER BY SUM(E.time_spent) DESC
         LIMIT :limit
     """)
+    // PlaylistPreview.thumbnailUrl isn't selected by this query; it's filled in elsewhere.
+    @Suppress( RoomWarnings.QUERY_MISMATCH )
     fun findPlaylistMostPlayedBetweenAsPreview(
         from: Long,
         to: Long = System.currentTimeMillis(),

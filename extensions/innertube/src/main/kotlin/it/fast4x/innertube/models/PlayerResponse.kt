@@ -46,7 +46,7 @@ data class PlayerResponse(
                     formats.findLast { it.itag == 774 || it.itag == 251 || it.itag == 141 ||
                             it.itag == 250 || it.itag == 140 ||
                             it.itag == 249 || it.itag == 139 || it.itag == 171
-                    } ?: formats.maxByOrNull { it.bitrate ?: 0 }
+                    } ?: formats.maxByOrNull { it.bitrate }
                 }
 
 
@@ -54,21 +54,21 @@ data class PlayerResponse(
             get() = adaptiveFormats?.filter { it.url != null || it.signatureCipher != null }
                 ?.let { formats ->
                     formats.findLast { it.itag == 774 || it.itag == 251 || it.itag == 140 || it.itag == 141 }
-                        ?: formats.maxByOrNull { it.bitrate ?: 0 }
+                        ?: formats.maxByOrNull { it.bitrate }
                 }
 
         val mediumQualityFormat: Format?
             get() = adaptiveFormats?.filter { it.url != null || it.signatureCipher != null }
                 ?.let { formats ->
                     formats.findLast { it.itag == 250 || it.itag == 140 }
-                        ?: formats.maxByOrNull { it.bitrate ?: 0 }
+                        ?: formats.maxByOrNull { it.bitrate }
                 }
 
         val lowestQualityFormat: Format?
             get() = adaptiveFormats?.filter { it.url != null || it.signatureCipher != null }
                 ?.let { formats ->
                     formats.findLast { it.itag == 249 || it.itag == 139 || it.itag == 171 }
-                        ?: formats.maxByOrNull { it.bitrate ?: 0 }
+                        ?: formats.maxByOrNull { it.bitrate }
                 }
 
 

@@ -658,7 +658,7 @@ MainActivity :
                                     PipModuleContainer {
                                         ImageFactory.AsyncImage(
                                             thumbnailUrl = player
-                                                                 ?.currentMediaItem
+                                                                 .currentMediaItem
                                                                  ?.mediaMetadata
                                                                  ?.artworkUri
                                                                  .toString()
@@ -821,8 +821,6 @@ MainActivity :
                     }
                 }
                 DisposableEffect(player) {
-                    val player = player ?: return@DisposableEffect onDispose { }
-
                     if (player.currentMediaItem == null) {
                         if (playerState.isVisible) {
                             showPlayer = false

@@ -746,7 +746,7 @@ fun LocalPlaylistSongs(
                         if (songs.isNotEmpty()) {
                             player.stopRadio()
                             player
-                                  ?.forcePlayFromBeginning( songs.shuffled() )
+                                  .forcePlayFromBeginning( songs.shuffled() )
                         }
                     }
                 }

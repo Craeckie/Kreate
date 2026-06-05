@@ -42,7 +42,7 @@ class VisualizerView : View {
         super.onDraw(canvas)
         if (this::painter.isInitialized && this::visualizerHelper.isInitialized) {
             setLayerType(LAYER_TYPE_HARDWARE, paint)
-            canvas?.apply {
+            canvas.apply {
                 simpleText.text = if (fps) "FPS: ${frameManager.fps()}" else ""
                 painter.calc(visualizerHelper)
                 painter.draw(canvas, visualizerHelper)

@@ -316,7 +316,7 @@ class PoTokenWebView private constructor(
                 ).toHeaders())
                 .url(url)
             val response = this.httpClient.newCall(requestBuilder.build()).execute()
-            return@runCatching response.body!!.string()
+            return@runCatching response.body.string()
         }
 
         suspend fun newPoTokenGenerator(): PoTokenWebView {

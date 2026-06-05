@@ -479,7 +479,7 @@ fun Scope.resolveInnertubeMedia( dataSpec: DataSpec ): DataSpec {
     // ANDROID_VR URLs carry no `n` throttling param, so deobfuscation is a no-op for them;
     // it is kept for correctness when IOS is used as fallback.
     val deobUrl = YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated( songId, cache.playableUrl )
-    val length = cache.contentLength ?: C.LENGTH_UNSET.toLong()
+    val length = cache.contentLength
     return dataSpec.buildUpon()
                    .setUri( "$deobUrl&cpn=${cache.cpn}" )
                    .setLength( length )

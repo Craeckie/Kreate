@@ -443,8 +443,8 @@ fun Lyrics(
 
                             kotlin.runCatching {
                                 LrcLib.lyrics(
-                                    artist = artistName ?: "",
-                                    title = title ?: "",
+                                    artist = artistName,
+                                    title = title,
                                     duration = duration.milliseconds,
                                     album = mediaMetadata.albumTitle?.toString()
                                 )?.onSuccess {
