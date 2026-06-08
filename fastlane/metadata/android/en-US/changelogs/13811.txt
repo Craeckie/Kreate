@@ -1,0 +1,4 @@
+## 🔧 Changes
+- 🔏 **Release APKs are now signed** — previous releases produced unsigned APKs that Android refused to install; this is now fixed
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-10...v2.2.0-11
