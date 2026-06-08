@@ -191,7 +191,7 @@ android {
             storeFile = file( ksFile )
             keyAlias = System.getenv( "KEY_ALIAS" ) ?: "kreate"
             storePassword = System.getenv( "KEYSTORE_PASSWORD" ) ?: System.getenv( "STORE_PASSWORD" )
-            keyPassword = System.getenv( "KEY_PASSWORD" )
+            keyPassword = System.getenv( "KEY_PASSWORD" ) ?: System.getenv( "KEYSTORE_PASSWORD" )
         }
         create( "nightly" ) {
             val ksFile = System.getenv( "KEYSTORE_FILE" ) ?: "$rootDir/.ignore.d/keystores/nightly.jks"
