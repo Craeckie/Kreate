@@ -10,19 +10,10 @@ import java.util.Date
 
 val APP_NAME = "Kreate Fixed"
 
-private fun String.sha256(): String {
-    val digest = MessageDigest.getInstance( "SHA-256" )
-    val hashBytes = digest.digest( this.toByteArray() )
 
-    return hashBytes.joinToString("") { b -> "%02x".format(b) }
-}
-
-// Please DO NOT change this, it's intended to differentiate between
-// knighthat/Kreate's build env and others' build env.
-// Only official build env has passwords and keystore to sign the APK
-// Other build environments can have unsigned version instead
-val officialBuildPhrase: String? = System.getenv( "OFFICIAL_BUILD_PASSPHRASE" )
-val isOfficialBuildEnv = !officialBuildPhrase.isNullOrBlank() && officialBuildPhrase.sha256() == "b2c778240e03b2005d23899aa02e51de049223a54d549d082e89dc20e51dd545"
+// Sign if the keystore file exists and password is provided (set via KEYSTORE_BASE64 + KEYSTORE_PASSWORD in CI)
+val keystoreFilePath = System.getenv( "KEYSTORE_FILE" ) ?: "$rootDir/.ignore.d/keystores/production.jks"
+val isOfficialBuildEnv = file( keystoreFilePath ).exists() && !System.getenv( "KEYSTORE_PASSWORD" ).isNullOrBlank()
 
 plugins {
     // Multiplatform
