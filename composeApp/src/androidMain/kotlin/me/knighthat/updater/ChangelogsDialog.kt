@@ -61,11 +61,12 @@ open class ChangelogsDialog(context: Context): Dialog() {
                .lines()
                .forEach { line ->
                    when {
-                       line.endsWith( ":" ) -> {
-                           // If [currentTitle] is not null, it means another section is reached.
-                           // Therefore, pack last section to a [Section]
+                       line.startsWith("##") || line.startsWith("#") -> {
                            currentTitle?.let( ::packSection )
-
+                           currentTitle = line.trimStart('#').trim()
+                       }
+                       line.endsWith( ":" ) -> {
+                           currentTitle?.let( ::packSection )
                            currentTitle = line.removeSuffix(":")
                        }
                        line.trim().startsWith("-") -> {
