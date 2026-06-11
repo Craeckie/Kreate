@@ -35,8 +35,10 @@ import androidx.media3.common.Player.REPEAT_MODE_ONE
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.cache.Cache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
+import app.kreate.di.CacheType
 import app.kreate.di.clearCachedStreamUrlOf
 import app.kreate.android.Preferences
 import app.kreate.android.R
@@ -149,6 +151,10 @@ class StatefulPlayerImpl(
     private val retried403Songs  = mutableSetOf<String>()
     /** Songs for which we already attempted an automatic rematch this session. */
     private val rematchedSongs   = mutableSetOf<String>()
+    /** Songs whose corrupted streaming-cache entry we already evicted this session. */
+    private val cacheRecoveredSongs = mutableSetOf<String>()
+    /** Writable streaming cache (not the read-only download cache); used to evict corrupt entries. */
+    private val streamCache: Cache by inject( CacheType.CACHE )
 
     override val currentMediaItemState = _currentMediaItemState.asStateFlow()
     override val currentTimelineState = _currentTimelineState.asStateFlow()
@@ -668,6 +674,26 @@ class StatefulPlayerImpl(
             else -> t.cause?.let( ::traverseErrorStack ) ?: t
         }
 
+    /**
+     * `true` when any throwable in [error]'s cause chain crashed inside
+     * `SimpleCache.commitFile` — media3's `IllegalStateException` (failed `isFullyLocked`
+     * assertion) raised when the song's videoId-keyed cache entry holds spans from a
+     * different physical stream than the one currently being written. It surfaces as a
+     * generic ExoPlayer "Source error", so it must be matched on the stack, not the type.
+     */
+    private fun isCacheCommitError( error: Throwable ): Boolean {
+        var t: Throwable? = error
+        while( t != null ) {
+            if( t.stackTrace.any {
+                    it.className == "androidx.media3.datasource.cache.SimpleCache"
+                    && it.methodName == "commitFile"
+                } )
+                return true
+            t = t.cause
+        }
+        return false
+    }
+
     private fun printErrorMessage( errMsg: String )  {
         // If the same error is set within 10s, it'll be ignored.
         val timeWindow = errorTimestamp + 10.seconds.inWholeMilliseconds
@@ -922,6 +948,31 @@ class StatefulPlayerImpl(
         }
         // ─────────────────────────────────────────────────────────────────────
 
+        // ── Recover from a corrupted streaming-cache entry ────────────────────
+        // The media3 disk cache is keyed by videoId only, with no discriminator for the
+        // resolved format. If an earlier attempt left a partial span of a different stream
+        // (e.g. adaptive audio from a teaser-blocked URL) and we now write a different one
+        // (e.g. the progressive itag-18 fallback), SimpleCache.commitFile's isFullyLocked
+        // assertion throws and playback dies deterministically at the stale span boundary
+        // ("plays a few seconds, then stops"; a full download bypasses this cache entirely).
+        // Eviction is safe here: the failed load has already torn down, so no writer holds a
+        // lock. Re-resolving then caches one consistent stream.
+        val cacheErrSongId = currentMediaItem?.mediaId
+        if( cacheErrSongId != null
+            && currentMediaItem?.isLocal != true
+            && isCacheCommitError( error )
+            && cacheRecoveredSongs.add( cacheErrSongId )
+        ) {
+            logger.i { "Streaming cache for $cacheErrSongId corrupted (SimpleCache.commitFile); evicting and re-resolving" }
+            clearCachedStreamUrlOf( cacheErrSongId )
+            runCatching { streamCache.removeResource( cacheErrSongId ) }
+                .onFailure { logger.w( "Failed to evict cache entry for $cacheErrSongId", it ) }
+            seekToDefaultPosition()
+            prepare()
+            return
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         when( rootCause ) {
             is PlayableFormatNotFoundException -> context.getString( R.string.error_couldn_t_find_a_playable_audio_format )
             is NoInternetException -> context.getString( R.string.no_connection )
@@ -938,6 +989,7 @@ class StatefulPlayerImpl(
         if (playbackState == Player.STATE_READY) {
             retried403Songs.clear()
             rematchedSongs.clear()
+            cacheRecoveredSongs.clear()
         }
     }
 
