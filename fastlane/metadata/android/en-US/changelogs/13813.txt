@@ -1,0 +1,4 @@
+## 🔧 Changes
+- 📦 **Smaller, better-optimized build** — corrected the release optimizer (R8) for the updated toolchain so the app is shrunk properly again.
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-12...v2.2.0-13
