@@ -175,6 +175,7 @@ fun LocalPlaylistSongs(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
     var itemsOnDisplay by persistList<Song>("localPlaylist/$playlistId/songs/on_display")
+    var allSongs by persistList<Song>("localPlaylist/$playlistId/songs/all_songs")
 
     val itemSelector = remember {
         ItemSelector( menuState ) { addAll( itemsOnDisplay ) }
@@ -309,7 +310,7 @@ fun LocalPlaylistSongs(
     }
     //</editor-fold>
     LaunchedEffect( items, relatedSongs, search.input, parentalControlEnabled ) {
-        items.toMutableList()
+        val base = items.toMutableList()
              .apply {
                  relatedSongs.forEach { (song, index) ->
                      // Make sure position can't go outside permissible range
@@ -320,15 +321,16 @@ fun LocalPlaylistSongs(
              }
              .distinctBy( Song::id )
              .filter { !parentalControlEnabled || !it.isExplicit }
-             .filter { song ->
-                 // Without cleaning, user can search explicit songs with "e:"
-                 // I kinda want this to be a feature, but it seems unnecessary
-                 val containsName = search appearsIn song.cleanTitle()
-                 val containsArtist = search appearsIn song.cleanArtistsText()
 
-                 containsName || containsArtist
-             }
-            .let { itemsOnDisplay = it }
+        allSongs = base
+        itemsOnDisplay = base.filter { song ->
+            // Without cleaning, user can search explicit songs with "e:"
+            // I kinda want this to be a feature, but it seems unnecessary
+            val containsName = search appearsIn song.cleanTitle()
+            val containsArtist = search appearsIn song.cleanArtistsText()
+
+            containsName || containsArtist
+        }
     }
     LaunchedEffect( playlist?.name ) {
 //        renameDialog.playlistName = playlistPreview?.playlist?.name?.let { name ->
@@ -702,8 +704,8 @@ fun LocalPlaylistSongs(
                                     )
                                 else
                                     player.forcePlayAtIndex(
-                                        itemsOnDisplay.fastMap( Song::asMediaItem ),
-                                        index
+                                        allSongs.fastMap( Song::asMediaItem ),
+                                        allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast( 0 )
                                     )
 
                                 /*
