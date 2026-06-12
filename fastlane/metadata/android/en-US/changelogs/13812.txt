@@ -1,0 +1,7 @@
+## 🐛 Fixes
+- ⏯️ **Songs that stopped after a few seconds** — tracks that played briefly and then halted (and would only play fully after downloading) now auto-recover and play to the end. The cause was a corrupted playback cache entry; it's now detected and cleared automatically.
+
+## 🔧 Changes
+- 🔄 **Synced with upstream Kreate** — picked up upstream fixes and updated internal libraries (Kotlin, OkHttp, Compose) for stability.
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-11...v2.2.0-12
