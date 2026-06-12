@@ -19,7 +19,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import app.kreate.android.Preferences
 import app.kreate.android.R
-import app.kreate.android.service.DownloadHelper
 import app.kreate.android.service.player.LiveWallpaperEngine
 import app.kreate.android.service.player.PlaybackController
 import app.kreate.android.service.player.StatefulPlayer
@@ -63,7 +62,6 @@ class PlaybackService:
     private val cache: Cache by inject(CacheType.CACHE)
     private val discord: Discord by inject()
     private val player: StatefulPlayer by inject()
-    private val downloadHelper: DownloadHelper by inject()
     private val volumeObserver: VolumeObserver by inject()
     private val preferences: SharedPreferences by inject(PrefType.DEFAULT)
     private val logger = Logger.withTag( this::class.java.simpleName )
@@ -199,7 +197,8 @@ class PlaybackService:
             .apply { setSmallIcon( R.drawable.app_icon_monochrome ) }
             .also( ::setMediaNotificationProvider )
 
-        MyDownloadHelper.instance = this.downloadHelper
+        // MyDownloadHelper.instance is now Koin-injected (upstream b8be8bd96), so no
+        // manual assignment is needed; it resolves to the same DownloadHelper singleton.
 
         preferences.registerOnSharedPreferenceChangeListener(this)
         preferences.registerOnSharedPreferenceChangeListener(audioHandler)
