@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import app.kreate.android.Preferences
 import app.kreate.android.service.DownloadHelper
 import app.kreate.android.service.player.ErrorHandlingPolicy
+import app.kreate.android.service.player.audioOnly
 import app.kreate.android.service.player.StatefulPlayer
 import app.kreate.android.service.player.StatefulPlayerImpl
 import app.kreate.android.service.player.VolumeObserver
@@ -154,6 +155,11 @@ val playerModule = module {
                 .setAudioAttributes( audioAttributes, handleAudioFocus )
                 .setUsePlatformDiagnostics( false )
                 .build()
+                .apply {
+                    // The ANDROID progressive fallback is muxed H.264 + AAC; without this
+                    // ExoPlayer spins up a video decoder for frames nothing renders.
+                    trackSelectionParameters = audioOnly( trackSelectionParameters )
+                }
         )
     }
 

@@ -457,3 +457,12 @@ val copyReleaseNote = tasks.register<Copy>("copyReleaseNote" ) {
         if( it == fileName ) "release_notes.txt" else it
     }
 }
+
+// Forward the sandbox's HTTP(S) proxy (set via gradle.properties systemProp.*) into forked
+// unit test JVMs. Without this, Robolectric's MavenArtifactFetcher tries a direct connection
+// to repo1.maven.org to fetch the android-all SDK jar and fails with UnknownHostException.
+tasks.withType<Test>().configureEach {
+    listOf( "http.proxyHost", "http.proxyPort", "https.proxyHost", "https.proxyPort" ).forEach { key ->
+        System.getProperty( key )?.let { systemProperty( key, it ) }
+    }
+}
