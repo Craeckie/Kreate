@@ -2,7 +2,6 @@ package it.fast4x.rimusic.extensions.youtubelogin
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -14,14 +13,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import app.kreate.android.Preferences
 import app.kreate.android.R
-import app.kreate.android.utils.innertube.CURRENT_LOCALE
 import co.touchlab.kermit.Logger
+import com.metrolist.innertube.YouTube
 import it.fast4x.rimusic.LocalPlayerAwareWindowInsets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import me.knighthat.innertube.Innertube
+import kotlinx.coroutines.withContext
 import me.knighthat.utils.Toaster
 
 @OptIn(
@@ -43,28 +42,55 @@ fun YouTubeLogin( onDone: () -> Unit ) {
             WebView(context).apply {
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished( view: WebView, url: String? ) {
-                        loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-                        loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
+                        super.onPageFinished( view, url )
 
-                        if ( url?.startsWith("https://music.youtube.com") == true ) {
-                            Preferences.YOUTUBE_COOKIES.value = CookieManager.getInstance().getCookie( url )
+                        if( url?.startsWith("https://music.youtube.com") != true )
+                            // Only extract credentials when user is redirected back to YTM page
+                            return
 
-                            CoroutineScope(Dispatchers.IO ).launch {
-                                Innertube.accountInfo(CURRENT_LOCALE )
-                                         .onSuccess {
-                                             Preferences.YOUTUBE_ACCOUNT_NAME.value = it.name
-                                             Preferences.YOUTUBE_ACCOUNT_EMAIL.value = it.email.orEmpty()
-                                             Preferences.YOUTUBE_SELF_CHANNEL_HANDLE.value = it.channelHandle.orEmpty()
-                                             Preferences.YOUTUBE_ACCOUNT_AVATAR.value = it.thumbnailUrl.firstOrNull()?.url.orEmpty()
-                                         }
-                                         .onFailure { err ->
-                                             Logger.e( "", err, "YouTubeLogin" )
-                                             Toaster.e( R.string.error_failed_to_acquire_account_info )
-                                         }
-                            }
+                        // Never overwrite a good credential with a blank one. onPageFinished can
+                        // fire before `yt.config_` is populated, in which case evaluateJavascript
+                        // yields "null"; storing "" would wipe YOUTUBE_VISITOR_DATA, whose default
+                        // is a working CHROME_WINDOWS_VISITOR_DATA fallback that PO-token minting
+                        // depends on.
+                        CookieManager.getInstance()
+                                     .getCookie( url )
+                                     ?.takeIf( String::isNotBlank )
+                                     ?.let { Preferences.YOUTUBE_COOKIES.value = it }
+                        YouTube.cookie = Preferences.YOUTUBE_COOKIES.value.takeIf( String::isNotBlank )
 
-                            onDone()
+                        evaluateJavascript( "window.yt.config_.VISITOR_DATA" ) { result ->
+                            result.takeIf { it != "null" }
+                                  ?.removeSurrounding("\"")
+                                  ?.takeIf( String::isNotBlank )
+                                  ?.let { Preferences.YOUTUBE_VISITOR_DATA.value = it }
+                            YouTube.visitorData = Preferences.YOUTUBE_VISITOR_DATA.value.takeIf( String::isNotBlank )
                         }
+                        evaluateJavascript( "window.yt.config_.DATASYNC_ID" ) { result ->
+                            result.takeIf { it != "null" }
+                                  ?.removeSurrounding("\"")
+                                  ?.substringBefore("||")
+                                  ?.takeIf( String::isNotBlank )
+                                  ?.let { Preferences.YOUTUBE_SYNC_ID.value = it }
+                            YouTube.dataSyncId = Preferences.YOUTUBE_SYNC_ID.value.takeIf( String::isNotBlank )
+                        }
+                        CoroutineScope(Dispatchers.IO).launch {
+                            YouTube.accountInfo()
+                                   .onFailure { err ->
+                                       Logger.e( "", err, "YouTubeLogin" )
+                                       Toaster.e( R.string.error_failed_to_acquire_account_info )
+                                   }
+                                   .onSuccess {
+                                       withContext( Dispatchers.Main ) {
+                                           Preferences.YOUTUBE_ACCOUNT_NAME.value = it.name
+                                           Preferences.YOUTUBE_ACCOUNT_EMAIL.value = it.email.orEmpty()
+                                           Preferences.YOUTUBE_SELF_CHANNEL_HANDLE.value = it.channelHandle.orEmpty()
+                                           Preferences.YOUTUBE_ACCOUNT_AVATAR.value = it.thumbnailUrl.orEmpty()
+                                       }
+                                   }
+                        }
+
+                        onDone()
                     }
                 }
                 settings.apply {
@@ -73,22 +99,6 @@ fun YouTubeLogin( onDone: () -> Unit ) {
                     builtInZoomControls = true
                     displayZoomControls = false
                 }
-                addJavascriptInterface(
-                    object {
-                        @Suppress("unused")     // Stop IDE from complaining & prevent accidental deletion
-                        @JavascriptInterface
-                        fun onRetrieveVisitorData( newVisitorData: String? ) {
-                            Preferences.YOUTUBE_VISITOR_DATA.value = newVisitorData.orEmpty()
-                        }
-
-                        @Suppress("unused")     // Stop IDE from complaining & prevent accidental deletion
-                        @JavascriptInterface
-                        fun onRetrieveDataSyncId( newDataSyncId: String? ) {
-                            Preferences.YOUTUBE_SYNC_ID.value = newDataSyncId.orEmpty().substringBefore("||")
-                        }
-                    },
-                    "Android"
-                )
                 webView = this
                 loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
             }

@@ -52,7 +52,7 @@ jobs:
       GITHUB_REPOSITORY: ${{ github.action_repository }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -93,7 +93,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -149,7 +149,7 @@ jobs:
             type: Uncompressed
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -169,7 +169,7 @@ jobs:
         run: echo "$KEYSTORE_BASE64" | tr -d '\r\n' | base64 -d > "$RUNNER_TEMP/production.jks"
 
       - name: Setup Java 21
-        uses: actions/setup-java@v5.2.0
+        uses: actions/setup-java@v5.5.0
         with:
           java-version: "21"
           distribution: "corretto"
@@ -179,7 +179,7 @@ jobs:
         # actions/cache/restore only downloads the cache
         # This will save time uploading the cache, since cache
         # builder is handled by another workflow
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.gradle/caches
@@ -223,7 +223,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read changelog
         id: changelog

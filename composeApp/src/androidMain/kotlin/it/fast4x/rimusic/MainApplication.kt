@@ -30,6 +30,7 @@ import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.crossfade
+import com.metrolist.innertube.YouTube
 import io.ktor.client.HttpClient
 import it.fast4x.rimusic.utils.AppLifecycleTracker
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,11 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         NewPipe.init( NewPipeDownloaderImpl( KoinJavaComponent.get(OkHttpClient::class.java) ) )
 
         Innertube.setProvider( InnertubeProvider() )
+        // These three prefs default to "" when the user has never logged in. Pass null rather
+        // than an empty string so the client omits the header instead of sending a blank one.
+        YouTube.cookie = Preferences.YOUTUBE_COOKIES.value.takeIf( String::isNotBlank )
+        YouTube.visitorData = Preferences.YOUTUBE_VISITOR_DATA.value.takeIf( String::isNotBlank )
+        YouTube.dataSyncId = Preferences.YOUTUBE_SYNC_ID.value.takeIf( String::isNotBlank )
 
         // Register network callback
         getSystemService<ConnectivityManager>()?.run {
