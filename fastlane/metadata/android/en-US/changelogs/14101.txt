@@ -1,0 +1,21 @@
+## 🐛 Fixes
+- 🔑 **YouTube login** — sign-in now captures your session reliably, and a half-loaded page can no longer wipe the credentials you already had
+- 🔄 **YouTube sync** — albums, artists and playlists sync again, and synced items are stored locally so they stay visible offline
+- 💥 **Home screen crash** — fixed a crash when an album or artist appeared both in your library and in the sync result
+- ▶️ **Playback** — fixed PO-token generation that could never succeed, which left some songs refusing to play
+- 🖼️ Fixed the playback crash "cannot use a recycled source in createBitmap"
+- 📥 **Downloads** — the download badge and its tap now agree on what is downloaded, deletions always go through the download manager, and downloaded songs are no longer silently evicted
+- 🎵 Tapping a song in search results now plays the whole playlist, not just the results
+- 🗒️ Crash logs are cleaned up when you dismiss the crash dialog
+
+## 🎨 Visual
+- 🖼️ Consistent artist thumbnail size in Quick Picks
+- 📉 Shorter, filtered error messages
+
+## 🔧 Changes
+- ⚡ Each stream URL is resolved once instead of once per caller
+- 📼 Video tracks are no longer selected during playback — less data used for audio-only listening
+- 🌍 Translation updates
+- 🧱 Rebased on upstream Kreate 2.2.3
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.0-13...v2.2.3-1
