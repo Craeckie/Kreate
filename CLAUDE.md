@@ -107,6 +107,24 @@ This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and i
 
 CI will fail if the changelog file is missing or `versionName` matches the latest release tag on this fork.
 
+### CI workflows that are red for non-code reasons
+
+Three workflows fail on this fork independently of what we push — verified 2026-09-04. Don't
+chase them when a push turns the Actions tab red:
+
+- **Chores → "Update license report"** — `./gradlew generateLicenseReport` dies on a Gradle
+  variant-ambiguity error resolving `:discord` (an AGP KMP library) for
+  `githubUniversalProdUncompressedRuntimeClasspath`. The `licenseReport { }` block and
+  `extensions/discord/build.gradle.kts` are identical to upstream, and *every* push-triggered
+  Chores run on `knighthat/Kreate` fails the same way. The job only regenerates
+  `res/raw/licenses.json`. It triggers on any push touching `**/build.gradle.kts` or
+  `gradle/libs.versions.toml`, so an upstream merge always fires it.
+- **Build all flavors (weekly schedule)** — stops at "Verify versions" with `Matched upstream
+  and downstream versions`. That is the intended guard: nothing new to release.
+- **Build (Nightly), daily** — `jq: syntax error … select(.workflow_id == )` because
+  `build-nightly.yaml` reads `${{ vars.WORKFLOW_ID }}` and this fork has no repository
+  variables set. We don't publish nightlies.
+
 ### Syncing with upstream (knighthat/Kreate)
 
 **Merge, don't cherry-pick.** Full rationale and the trap list live in
@@ -142,9 +160,10 @@ Three standing constraints:
   and `modules/metrolist` point at `git@github.com:Craeckie/…` forks and there is
   no SSH key here; our `Kreate-innertube` fork is a squashed orphan sharing no
   history with upstream's. Always resolve them to ours.
-- **`origin` is an SSH remote, so `git push` over it fails here.** `gh` is
-  authenticated over HTTPS — push with
-  `git push "https://x-access-token:$(gh auth token)@github.com/Craeckie/Kreate.git" main --tags`.
+- **`origin` is HTTPS and `git push` works** — `gh auth setup-git` installed
+  `gh auth git-credential` as the credential helper, so plain `git push origin main` (and
+  `--tags`) authenticates as `Craeckie`. The submodule remotes are still SSH, hence the
+  point above.
 - **Much of upstream's playback investment lands on code we do not execute.**
   `com.metrolist.music.utils.YTPlayerUtils` and the whole `utils/cipher/` package
   have **zero callers** in this fork; our resolver is
