@@ -64,6 +64,7 @@ class DownloadHelperImpl(
 
     companion object {
 
+        private const val TAG = "DownloadHelperImpl"
         private const val NUM_PARALLEL_DOWNLOADS = 3
         private const val NUM_RETRIES = 2
         private const val EXECUTOR_NAME = "DownloadHelper-Executor-Scope"
@@ -148,6 +149,18 @@ class DownloadHelperImpl(
         }
     }
 
+    /** media3 reports download state as an int; logs are useless without the name. */
+    private fun stateName( state: Int ): String = when( state ) {
+        Download.STATE_QUEUED       -> "QUEUED"
+        Download.STATE_STOPPED      -> "STOPPED"
+        Download.STATE_DOWNLOADING  -> "DOWNLOADING"
+        Download.STATE_COMPLETED    -> "COMPLETED"
+        Download.STATE_FAILED       -> "FAILED"
+        Download.STATE_REMOVING     -> "REMOVING"
+        Download.STATE_RESTARTING   -> "RESTARTING"
+        else                        -> "UNKNOWN($state)"
+    }
+
     override val downloads: MutableStateFlow<Map<String, Download>>
     override val downloadManager by lazy {
         val listener = object: DownloadManager.Listener {
@@ -156,6 +169,15 @@ class DownloadHelperImpl(
                 download: Download,
                 finalException: Exception?
             ) {
+                // Info level: release builds log at Info, and a download that silently never
+                // starts is otherwise invisible in a user-supplied logcat.
+                Logger.i( TAG ) {
+                    "download ${download.request.id} -> ${stateName( download.state )}" +
+                    " (${download.percentDownloaded.toInt()}%, ${download.bytesDownloaded}B)" +
+                    " queued=${downloadManager.currentDownloads.size}/${downloadManager.maxParallelDownloads}" +
+                    ( finalException?.let { " exception=${it::class.simpleName}: ${it.message}" } ?: "" )
+                }
+
                 syncDownloads( download )
                 // Clear rematch guard on success so a future failure of the same id
                 // can re-trigger (otherwise the guard set grows unboundedly).
@@ -172,7 +194,10 @@ class DownloadHelperImpl(
             override fun onDownloadRemoved(
                 downloadManager: DownloadManager,
                 download: Download
-            ) = syncDownloads(download)
+            ) {
+                Logger.i( TAG ) { "download ${download.request.id} removed from index" }
+                syncDownloads( download )
+            }
         }
 
         val manager = DownloadManager(
@@ -187,6 +212,11 @@ class DownloadHelperImpl(
         manager.minRetryCount = NUM_RETRIES
         manager.requirements = Requirements(Requirements.NETWORK)
         manager.addListener( listener )
+
+        Logger.i( TAG ) {
+            "DownloadManager ready: maxParallel=${manager.maxParallelDownloads}" +
+            " retries=${manager.minRetryCount} requirementsMet=${manager.isWaitingForRequirements.not()}"
+        }
 
         manager
     }
@@ -242,11 +272,20 @@ class DownloadHelperImpl(
     }
 
     override fun addDownload( mediaItem: MediaItem ) {
-        if (mediaItem.isLocal) return
+        if (mediaItem.isLocal) {
+            Logger.i( TAG ) { "addDownload ${mediaItem.mediaId} skipped: local file" }
+            return
+        }
 
         if( !isNetworkConnected( context ) ) {
+            Logger.i( TAG ) { "addDownload ${mediaItem.mediaId} refused: no network" }
             Toaster.noInternet()
             return
+        }
+
+        Logger.i( TAG ) {
+            "addDownload ${mediaItem.mediaId} requested" +
+            " (already known: ${downloads.value[mediaItem.mediaId]?.let { stateName( it.state ) } ?: "no"})"
         }
 
         val downloadRequest = DownloadRequest
@@ -269,11 +308,14 @@ class DownloadHelperImpl(
 //            )
 
         coroutineScope.launch {
-            context.download<MyDownloadService>(downloadRequest).exceptionOrNull()?.let {
-                if (it is CancellationException) throw it
+            val sendResult = context.download<MyDownloadService>(downloadRequest)
+            sendResult.exceptionOrNull()
+                ?.let {
+                    if (it is CancellationException) throw it
 
-                Logger.e( it, "DownloadHelperImpl" ) { "addDownload failed!"}
-            }
+                    Logger.e( it, TAG ) { "addDownload ${mediaItem.mediaId}: could not reach MyDownloadService" }
+                }
+                ?: Logger.i( TAG ) { "addDownload ${mediaItem.mediaId}: handed to MyDownloadService" }
             downloadSyncedLyrics( mediaItem.asSong )
 
             ImageFactory.requestBuilder( imageUrl.toString() ) {
