@@ -107,6 +107,44 @@ This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and i
 
 CI will fail if the changelog file is missing or `versionName` matches the latest release tag on this fork.
 
+### Checking upstream (knighthat/Kreate)
+
+Do not read `git log main..upstream/main` by hand — roughly 85% of it is Crowdin
+churn and dependabot bumps. Run:
+
+```bash
+python3 scripts/upstream_check.py            # fetch + report
+python3 scripts/upstream_check.py --no-fetch # offline, use refs already on disk
+python3 scripts/upstream_check.py --all      # include the i18n/deps/ci noise
+```
+
+It buckets every outstanding commit by the paths it touches, drops the ones
+already in our history (patch-id via `git cherry`, plus the `cherry picked from
+commit` trailer that `git cherry-pick -x` leaves), drops the ones already ruled
+on in `docs/upstream-triage.tsv`, and test-applies the rest in a throwaway
+worktree so the report says CLEAN or CONFLICT(files) up front. For a commit that
+also bumps a submodule pointer it applies only the superproject paths and
+reports `SUBMODULE+...`, answering whether the app-side hunk stands alone.
+
+**Always use `git cherry-pick -x`** so the next run can tell what we took, and
+**record every decision** — including the rejections, with the reason — in
+`docs/upstream-triage.tsv` (`<sha>\t taken|skipped|deferred \t<note>`).
+`.github/workflows/upstream-triage.yaml` runs the same script weekly and keeps
+one labelled issue in sync.
+
+Two standing constraints when picking:
+
+- **Submodule pointers cannot be bumped from a machine without SSH access.**
+  `modules/innertube` and `modules/metrolist` point at `git@github.com:Craeckie/…`
+  forks, and our `Kreate-innertube` fork is a squashed orphan root that shares no
+  history with upstream's — so an upstream submodule commit is never simply
+  fetchable. A commit needing one is a task for a machine with push access.
+- **Much of upstream's playback investment lands on code we do not execute.**
+  `com.metrolist.music.utils.YTPlayerUtils` and the whole `utils/cipher/` package
+  have no callers in this fork; our resolver is `InnertubeResolvingDataSource` →
+  `AndroidVrStreamHelper`, deciphering through NewPipe. Check for a live caller
+  before taking a "fix" there.
+
 Submodules `modules/innertube` and `modules/kizzy` must be checked out (`git submodule update --init --recursive`) — they're separate Gradle projects included via `settings.gradle.kts`.
 
 ## Architecture overview
