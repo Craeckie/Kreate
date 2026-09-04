@@ -148,8 +148,15 @@ private fun upsertSongInfo( context: Context, videoId: String ) {       // Use t
 
 /**
  * Upsert provided format to the database
+ *
+ * @param contentLength the byte length to persist, or `null` when genuinely unknown. Callers
+ * pass the value recovered from the url's `clen` param (see [makeStreamCache]) rather than
+ * [PlayerResponse.StreamingData.Format.contentLength] directly, because a progressive (ANDROID
+ * itag 18/22) response often omits it from the JSON — writing NULL here breaks both the
+ * download badge's cache check ([app.kreate.android.service.DownloadCacheState]) and the
+ * tail-range probe in [validateStreamUrl] on the next resolution.
  */
-private fun upsertSongFormat( videoId: String, format: PlayerResponse.StreamingData.Format ) {
+private fun upsertSongFormat( videoId: String, format: PlayerResponse.StreamingData.Format, contentLength: Long? ) {
     // Skip adding if it's just added in previous call
     if( videoId == justInserted.load() ) return
 
@@ -167,7 +174,7 @@ private fun upsertSongFormat( videoId: String, format: PlayerResponse.StreamingD
                     format.itag.toInt(),
                     format.mimeType,
                     format.bitrate.toLong(),
-                    format.contentLength?.toLong(),
+                    contentLength,
                     format.lastModified.toLong(),
                     format.loudnessDb
                 )
@@ -342,16 +349,20 @@ private suspend fun makeStreamCache(
         //</editor-fold>
 
         return if( validateResult ) {
-            upsertSongFormat( songId, format )
-
-            logger.i { "Resolved $songId via ${methodName(method)}" }
-
             // Progressive (ANDROID itag 18/22) responses often omit contentLength in the JSON;
             // recover it from the url's `clen` param, else leave UNSET so ExoPlayer reads to EOF
-            // (never CHUNK_LENGTH — that would truncate a progressive stream at 512KB).
+            // (never CHUNK_LENGTH — that would truncate a progressive stream at 512KB). Computed
+            // before the upsert below so the recovered value — not a NULL — is what gets
+            // persisted; a NULL column also breaks the tail-range probe in [validateStreamUrl]
+            // on the next resolution.
             val contentLength = format.contentLength?.toLong()
                 ?: Regex("[?&]clen=(\\d+)").find( streamUrl )?.groupValues?.get( 1 )?.toLongOrNull()
                 ?: C.LENGTH_UNSET.toLong()
+
+            upsertSongFormat( songId, format, contentLength.takeIf { it != C.LENGTH_UNSET.toLong() } )
+
+            logger.i { "Resolved $songId via ${methodName(method)}" }
+
             val expiredTimeMillis = System.currentTimeMillis() +
                 (response.streamingData?.expiresInSeconds?.toLong()?.times(1000L) ?: 1.hours.inWholeMilliseconds)
             StreamCache(cpn, contentLength, streamUrl, expiredTimeMillis)

@@ -7,14 +7,22 @@ import androidx.media3.datasource.cache.ContentMetadata
 import androidx.media3.exoplayer.offline.Download
 
 /**
- * Answers "does this cache actually hold the whole resource?" — the question the
- * download badge must ask, and the one media3's [androidx.media3.exoplayer.offline.DownloadIndex]
- * cannot answer.
+ * Answers "does this cache actually hold the whole resource?" for either of the two media3
+ * caches this app keeps — the plain playback cache a song streams into as it plays, and the
+ * download-completion cache a finished download lands in (see [app.kreate.di.CacheType] for
+ * both). Neither media3's
+ * [androidx.media3.exoplayer.offline.DownloadIndex] nor the Room `formats` table can answer
+ * this on its own.
  *
- * The index and the cache are independent stores. A row can say
+ * For the download cache: the index and the cache are independent stores. A row can say
  * [androidx.media3.exoplayer.offline.Download.STATE_COMPLETED] long after the bytes were
  * removed (see `docs/superpowers/plans/2026-09-03-download-state-desync-and-audio-only-playback.md`),
  * which is why the UI must consult both.
+ *
+ * For the plain playback cache: Room's `formats.contentLength` is nullable, and a progressive
+ * (ANDROID itag 18/22) stream resolves with no `contentLength` in YouTube's player JSON, so the
+ * column is NULL for it. A cached-bytes-equals-Room-column check can then never be true even
+ * though the song plays instantly with zero network — so that check must not be used either.
  */
 object DownloadCacheState {
 
@@ -25,6 +33,9 @@ object DownloadCacheState {
      * `formats` table: `SimpleCache.removeResource` and a full LRU eviction drop the metadata
      * together with the spans, so a wiped resource reports `C.LENGTH_UNSET` (-1) and fails the
      * `> 0` guard. A partially evicted resource keeps its metadata but fails [Cache.isCached].
+     * This also makes it the right check for a song whose Room `formats.contentLength` is NULL
+     * (a progressive ANDROID-fallback stream): `CacheDataSource` writes the length into
+     * [ContentMetadata] itself when it reaches EOF while writing, independent of what Room knows.
      *
      * Never throws — a released or uninitialized cache reports `false`, matching how
      * [it.fast4x.rimusic.utils.downloadedStateMedia] already treats an unreachable cache.

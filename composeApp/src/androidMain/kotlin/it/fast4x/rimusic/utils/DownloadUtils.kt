@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.cache.Cache
@@ -67,12 +66,14 @@ fun downloadedStateMedia(
 
     // Force cache to to be available
     // Throw NullPointerException is uninitialized
+    // Ask the cache itself, not the Room `formats` row: a progressive (ANDROID itag 18/22)
+    // stream resolves with no contentLength in YouTube's JSON, so the column is NULL and an
+    // equality check against it can never be true — the song plays instantly from cache while
+    // the badge insists it is not cached. The cache records the length itself on EOF.
     val isCached by remember( mediaId, cache ) {
-        val cachedBytes = cache.getCachedBytes( mediaId, 0, C.LENGTH_UNSET.toLong() )
-
         Database.formatTable
                 .findBySongId( mediaId )
-                .map { it?.contentLength == cachedBytes }
+                .map { DownloadCacheState.isFullyCached( cache, mediaId ) }
     }.collectAsState( false, Dispatchers.IO )
 
     return if( isCached ) DownloadedStateMedia.CACHED else DownloadedStateMedia.NOT_CACHED_OR_DOWNLOADED

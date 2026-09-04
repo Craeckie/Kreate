@@ -30,11 +30,15 @@ The build matrix is **3 platform flavors × 5 arch flavors × 2 env flavors × 4
 ./gradlew :composeApp:jvmTest                                  # commonMain/jvmMain tests
 
 # The Android unit tests include a live-network playback test
-# (app.kreate.android.service.innertube.SongPlaybackTest) that resolves a real
-# YouTube stream via the ANDROID_VR client and asserts it serves byte ranges
-# past the 1-minute mark — guarding the 403 / "stops at ~1 min" regression. It
-# honours the env proxy and SKIPS itself (JUnit assumption) when offline, so it
-# never breaks a no-network build; a hard failure means songs genuinely won't play.
+# (app.kreate.android.service.innertube.SongPlaybackTest) that walks the real
+# resolver chain — ANDROID_VR -> IOS -> ANDROID progressive — and asserts that
+# *some* client serves byte ranges past the 1-minute mark, guarding the 403 /
+# "stops at ~1 min" regression. It passes as soon as one rung streams the whole
+# track, because that is when a song plays; pinning it to ANDROID_VR alone would
+# fail over a YouTube change the app already absorbs. It honours the env proxy and
+# SKIPS itself (JUnit assumption) when offline, so it never breaks a no-network
+# build; a hard failure means the whole chain is exhausted and songs genuinely
+# won't play.
 
 # Run a single test class
 ./gradlew :composeApp:testGithubUniversalProdDebugUnitTest \

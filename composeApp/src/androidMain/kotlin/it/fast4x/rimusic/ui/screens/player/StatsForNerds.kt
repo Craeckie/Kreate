@@ -218,15 +218,15 @@ fun StatsForNerds(
                             true -> "100%"
                             else -> {
                                 if (downloadCachedBytes == 0L)
-                                    Formatter.formatShortFileSize(context, cachedBytes) + format?.contentLength?.let {
+                                    Formatter.formatShortFileSize(context, cachedBytes) + (format?.contentLength?.let {
                                         " (${(cachedBytes.toFloat() / it * 100).roundToInt()}%)"
-                                }
+                                } ?: "")
                                 else Formatter.formatShortFileSize(
                                     context,
                                     downloadCachedBytes
-                                ) + format?.contentLength?.let {
+                                ) + (format?.contentLength?.let {
                                      " (${(downloadCachedBytes.toFloat() / it * 100).roundToInt()}%)"
-                                }
+                                } ?: "")
                             }
                         },
                         maxLines = 1,
@@ -398,16 +398,16 @@ fun StatsForNerds(
                                                       context,
                                                       cachedBytes
                                                   )
-                                                  + format?.contentLength?.let {
+                                                  + (format?.contentLength?.let {
                                                           " (${(cachedBytes.toFloat() / it * 100).roundToInt()}%)"
-                                                  }
+                                                  } ?: "")
                                           else stringResource(R.string.downloaded) + " : " + Formatter.formatShortFileSize(
                                                   context,
                                                   downloadCachedBytes
                                               )
-                                          + format?.contentLength?.let {
+                                          + (format?.contentLength?.let {
                                                " (${(downloadCachedBytes.toFloat() / it * 100).roundToInt()}%)"
-                                          }
+                                          } ?: "")
                                       ,
                                       maxLines = 1,
                                       style = typography().xs.medium.color(colorPalette().text)

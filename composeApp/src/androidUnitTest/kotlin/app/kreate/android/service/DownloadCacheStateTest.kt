@@ -99,6 +99,19 @@ class DownloadCacheStateTest {
         assertFalse( DownloadCacheState.isFullyCached( cache, "abc" ) )
     }
 
+    /**
+     * The progressive-stream (ANDROID itag 18/22) case: YouTube's player JSON omits
+     * `contentLength`, so the Room `formats` row for this song has no length at all — there is
+     * no row to compare against. [DownloadCacheState.isFullyCached] must not need one: the cache
+     * records the length itself in [ContentMetadata] when `CacheDataSource` reaches EOF while
+     * writing, so a fully-written resource still reports cached even though Room knows nothing.
+     */
+    @Test
+    fun streamCacheWithMetadataIsFullyCached() {
+        val cache = FakeCache( contentLength = 4_000_000L, cachedBytes = 4_000_000L )
+        assertTrue( DownloadCacheState.isFullyCached( cache, "abc" ) )
+    }
+
     @Test
     fun downloadedRequiresBothStores() {
         val cache = FakeCache( contentLength = 4_000_000L, cachedBytes = 4_000_000L )
