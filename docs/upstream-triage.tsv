@@ -1,0 +1,26 @@
+# Decisions on upstream (knighthat/Kreate) commits, so scripts/upstream_check.py
+# stops re-asking about the ones we have already thought about.
+#
+#   <upstream sha>	<verdict>	<note>
+#
+# verdict: taken | skipped | deferred
+# Tab-separated. Lines starting with # are ignored.
+
+ac632f96c	taken	bitmap crash fix; applied as the net of ac632f96c+7b891f4d3
+7b891f4d3	taken	maintainer-simplified final form, this is what we run
+9ffefe7b4	taken	cherry-picked as-is
+4d138aef0	taken	cherry-picked as-is
+0fd644695	skipped	upstream's own issue-template layout; our Repository.kt points elsewhere
+1db6960bf	skipped	README badges for upstream's release channels
+4717a759c	skipped	README badges for upstream's release channels
+73c0bbc96	skipped	README badges for upstream's release channels
+f02577e86	skipped	README credit for upstream
+34b3c1ce5	skipped	cosmetic gradle task metadata, no behaviour change
+d10b1a1d3	skipped	compileSdk churn; we pin our own
+52c50cdc1	skipped	compileSdk churn; we pin our own
+06cebf2e3	skipped	upstream toolchain revert; our gradle wrapper is pinned separately
+0ba70f52b	skipped	upstream dependency revert; ours is pinned separately
+37fb5467b	skipped	upstream version bump; we use Debian-style backport versioning
+53c2218ff	skipped	upstream version bump; we use Debian-style backport versioning
+9d1b3f45b	skipped	upstream version bump; we use Debian-style backport versioning
+354b75081	skipped	we already init CipherDeobfuscator in MainApplication.onCreate
