@@ -41,7 +41,7 @@ PROTECTED: list[tuple[str, str]] = [
     ("modules/innertube", "submodule pointer -- Craeckie fork, needs SSH to bump"),
     ("modules/metrolist", "submodule pointer -- Craeckie fork, needs SSH to bump"),
     ("composeApp/src/androidMain/kotlin/com/metrolist/music/utils/YTPlayerUtils.kt",
-     "dead code here (zero callers); upstream's version needs submodule symbols we cannot fetch"),
+     "dead code here -- zero callers; our resolver is AndroidVrStreamHelper"),
     ("composeApp/src/androidMain/kotlin/com/metrolist/music/utils/cipher/",
      "serves only the dead YTPlayerUtils path"),
     ("composeApp/src/androidMain/kotlin/com/metrolist/music/utils/potoken/PoTokenGenerator.kt",

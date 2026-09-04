@@ -69,9 +69,10 @@ None of these conflicted. All three were in files where this fork had deliberate
   git push "https://x-access-token:$(gh auth token)@github.com/Craeckie/Kreate.git" main --tags
   ```
 - **Much of upstream's playback work lands on code we do not execute.**
-  `com.metrolist.music.utils.YTPlayerUtils` and `utils/cipher/` have **zero callers** here.
-  Upstream's rewrite of them also imports symbols from the submodule we cannot bump, so taking it
-  does not even compile. Keep ours; check for a live caller before ever taking a "fix" there.
+  `com.metrolist.music.utils.YTPlayerUtils` and `utils/cipher/` have **zero callers** here — our
+  resolver is `InnertubeResolvingDataSource` → `AndroidVrStreamHelper`. Taking upstream's rewrite
+  of them buys nothing at runtime and drags in ~400KB of assets. Keep ours; check for a live
+  caller before ever taking a "fix" there.
 - **The version block is always ours** — Debian-style `<upstream>-<N>`, see CLAUDE.md.
 
 ## Keeping the policy honest

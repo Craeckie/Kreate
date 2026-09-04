@@ -15,7 +15,6 @@ import com.metrolist.innertube.pages.BrowseResult
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.enums.ArtistsType
 import it.fast4x.rimusic.enums.FilterBy
-import it.fast4x.rimusic.utils.importYTMSubscribedChannels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,9 +64,13 @@ class HomeArtistsViewModel : ViewModel(), KoinComponent {
             val filterByFlow = snapshotFlow { Preferences.HOME_ARTIST_AND_ALBUM_FILTER.value }
 
             combine( _syncedArtists, _localArtists, filterByFlow ) { online, local, filterBy ->
-                // Same duplicate-key hazard as albums: a followed artist can appear in both
-                // the YouTube sync result and the local library.
-                val combined = ( online + local ).distinctBy( Artist::id )
+                // The same id can arrive from both sides, and `items( key = Artist::id )`
+                // throws "Key was already used" on a duplicate. Local first, because
+                // distinctBy keeps the first occurrence and the Room row carries the
+                // user's bookmarkedAt and real isYoutubeArtist, which the synced copy
+                // hard-codes -- keeping the online one would drop a locally-bookmarked
+                // entry out of the Local filter.
+                val combined = ( local + online ).distinctBy( Artist::id )
 
                 when( filterBy ) {
                     FilterBy.All            -> combined
@@ -87,9 +90,6 @@ class HomeArtistsViewModel : ViewModel(), KoinComponent {
         }
         if( !isEnabled ) return
 
-        // Same as albums: keep Room as the durable store for the synced YT library so followed
-        // artists remain visible offline.
-        importYTMSubscribedChannels()
 
         YouTube.browse( "FEmusic_library_landing", null )
                .onFailure { err ->

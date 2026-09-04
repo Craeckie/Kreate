@@ -61,8 +61,9 @@ class MainApplication : Application(), SingletonImageLoader.Factory {
         NewPipe.init( NewPipeDownloaderImpl( KoinJavaComponent.get(OkHttpClient::class.java) ) )
 
         Innertube.setProvider( InnertubeProvider() )
-        // These three prefs default to "" when the user has never logged in. Pass null rather
-        // than an empty string so the client omits the header instead of sending a blank one.
+        // cookie and dataSyncId default to "" when the user has never logged in (visitorData
+        // defaults to a real CHROME_WINDOWS_VISITOR_DATA fallback). Pass null rather than an
+        // empty string so the client omits the header instead of sending a blank one.
         YouTube.cookie = Preferences.YOUTUBE_COOKIES.value.takeIf( String::isNotBlank )
         YouTube.visitorData = Preferences.YOUTUBE_VISITOR_DATA.value.takeIf( String::isNotBlank )
         YouTube.dataSyncId = Preferences.YOUTUBE_SYNC_ID.value.takeIf( String::isNotBlank )

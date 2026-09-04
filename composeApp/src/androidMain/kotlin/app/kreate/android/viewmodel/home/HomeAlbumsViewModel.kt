@@ -15,7 +15,6 @@ import com.metrolist.innertube.pages.BrowseResult
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.enums.AlbumsType
 import it.fast4x.rimusic.enums.FilterBy
-import it.fast4x.rimusic.utils.importYTMLikedAlbums
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,10 +64,13 @@ class HomeAlbumsViewModel : ViewModel(), KoinComponent {
             val filterByFlow = snapshotFlow { Preferences.HOME_ARTIST_AND_ALBUM_FILTER.value }
 
             combine( _syncedAlbums, _localAlbums, filterByFlow ) { online, local, filterBy ->
-                // An album can be both freshly synced from YouTube and already bookmarked in
-                // Room. Without this, the same id reaches `items( key = Album::id )` twice and
-                // Compose throws "Key was already used".
-                val combined = ( online + local ).distinctBy( Album::id )
+                // The same id can arrive from both sides, and `items( key = Album::id )`
+                // throws "Key was already used" on a duplicate. Local first, because
+                // distinctBy keeps the first occurrence and the Room row carries the
+                // user's bookmarkedAt and real isYoutubeAlbum, which the synced copy
+                // hard-codes -- keeping the online one would drop a locally-bookmarked
+                // entry out of the Local filter.
+                val combined = ( local + online ).distinctBy( Album::id )
 
                 when( filterBy ) {
                     FilterBy.All            -> combined
@@ -88,11 +90,6 @@ class HomeAlbumsViewModel : ViewModel(), KoinComponent {
         }
         if( !isEnabled ) return
 
-        // Persist the synced YT library into Room. The ViewModel's own fetch below only feeds an
-        // in-memory StateFlow that is cleared on every refresh, so without this the user's synced
-        // albums vanish offline and on process death. This also preserves bookmarkedAt and
-        // un-flags albums removed on YouTube.
-        importYTMLikedAlbums()
 
         YouTube.browse( "FEmusic_library_landing", null )
                .onFailure { err ->

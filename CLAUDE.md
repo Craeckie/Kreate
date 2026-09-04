@@ -148,9 +148,9 @@ Three standing constraints:
 - **Much of upstream's playback investment lands on code we do not execute.**
   `com.metrolist.music.utils.YTPlayerUtils` and the whole `utils/cipher/` package
   have **zero callers** in this fork; our resolver is
-  `InnertubeResolvingDataSource` → `AndroidVrStreamHelper`. Upstream's rewrite of
-  them also imports submodule symbols we cannot fetch, so it does not even
-  compile here. Check for a live caller before taking a "fix" there.
+  `InnertubeResolvingDataSource` → `AndroidVrStreamHelper`. Taking upstream's
+  rewrite of them buys nothing at runtime and drags in ~400KB of unused assets.
+  Check for a live caller before taking a "fix" there.
 
 Submodules `modules/innertube` and `modules/kizzy` must be checked out (`git submodule update --init --recursive`) — they're separate Gradle projects included via `settings.gradle.kts`.
 

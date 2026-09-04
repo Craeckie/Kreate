@@ -55,10 +55,7 @@ class HomeLibraryViewModel : ViewModel(), KoinComponent {
                 }
         }
         viewModelScope.launch( Dispatchers.Default ) {
-            combine( _syncedPlaylists, _localPlaylists ) { online, local ->
-                // A synced YouTube playlist also has a Room row; dedupe so it renders once.
-                ( online + local ).distinctBy { it.playlist.browseId ?: "local:${it.playlist.id}" }
-            }
+            combine( _syncedPlaylists, _localPlaylists ) { online, local -> online + local }
                 .collectLatest { playlists ->
                     _playlists.update { playlists }
                 }

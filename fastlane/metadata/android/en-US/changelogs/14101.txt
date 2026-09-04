@@ -1,6 +1,6 @@
 ## 🐛 Fixes
 - 🔑 **YouTube login** — sign-in now captures your session reliably, and a half-loaded page can no longer wipe the credentials you already had
-- 🔄 **YouTube sync** — albums, artists and playlists sync again, and synced items are stored locally so they stay visible offline
+- 🔄 **YouTube sync** — albums, artists and playlists sync correctly again
 - 💥 **Home screen crash** — fixed a crash when an album or artist appeared both in your library and in the sync result
 - ▶️ **Playback** — fixed PO-token generation that could never succeed, which left some songs refusing to play
 - 🖼️ Fixed the playback crash "cannot use a recycled source in createBitmap"
@@ -11,6 +11,9 @@
 ## 🎨 Visual
 - 🖼️ Consistent artist thumbnail size in Quick Picks
 - 📉 Shorter, filtered error messages
+
+## ⚠️ Known Change
+- 📴 Synced YouTube albums and artists are now shown **online only** — they are no longer kept on the device, so they will not appear while offline. Your own bookmarked albums and artists are unaffected.
 
 ## 🔧 Changes
 - ⚡ Each stream URL is resolved once instead of once per caller
