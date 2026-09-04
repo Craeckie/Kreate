@@ -50,6 +50,10 @@ PROTECTED: list[tuple[str, str]] = [
      "our resolver is AndroidVrStreamHelper; upstream re-adds the YTPlayerUtils path"),
     ("composeApp/src/androidMain/assets/solver/",
      "~400KB of JS referenced by nothing once the cipher rewrite is kept out"),
+    (".github/workflows/build-all-flavors-weekly.yml",
+     "rewritten for this fork's signing secrets (KEYSTORE_BASE64/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD)"),
+    (".github/workflows/build-nightly.yaml",
+     "schedule removed -- this fork has none of the NIGHTLY_* secrets, so a scheduled run can only fail"),
 ]
 
 # Paths that always need a human decision, even when git merges them clean.

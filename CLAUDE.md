@@ -109,7 +109,7 @@ CI will fail if the changelog file is missing or `versionName` matches the lates
 
 ### CI workflows that are red for non-code reasons
 
-Three workflows fail on this fork independently of what we push — verified 2026-09-04. Don't
+Two workflows fail on this fork independently of what we push — verified 2026-09-04. Don't
 chase them when a push turns the Actions tab red:
 
 - **Chores → "Update license report"** — `./gradlew generateLicenseReport` dies on a Gradle
@@ -119,11 +119,23 @@ chase them when a push turns the Actions tab red:
   Chores run on `knighthat/Kreate` fails the same way. The job only regenerates
   `res/raw/licenses.json`. It triggers on any push touching `**/build.gradle.kts` or
   `gradle/libs.versions.toml`, so an upstream merge always fires it.
-- **Build all flavors (weekly schedule)** — stops at "Verify versions" with `Matched upstream
-  and downstream versions`. That is the intended guard: nothing new to release.
-- **Build (Nightly), daily** — `jq: syntax error … select(.workflow_id == )` because
-  `build-nightly.yaml` reads `${{ vars.WORKFLOW_ID }}` and this fork has no repository
-  variables set. We don't publish nightlies.
+- **Build all flavors (bi-monthly schedule)** — stops at "Verify versions" with `Matched
+  upstream and downstream versions`. That is the intended guard: nothing new to release. The
+  tag-triggered runs, which are the ones that matter, succeed.
+
+**Build (Nightly)** used to be a third: it ran daily and died in ~10s on
+`jq: syntax error … select(.workflow_id == )`, because upstream's `build-nightly.yaml` reads
+a `${{ vars.WORKFLOW_ID }}` repository variable that this fork never set. The daily
+`schedule:` trigger is now removed and the step derives the workflow file name from
+`github.workflow_ref` instead, so nothing needs configuring. It is dispatch-only. Note that
+re-enabling it needs more than the schedule back: the build job still expects upstream's
+`NIGHTLY_KEYSTORE`, `NIGHTLY_KEYSTORE_SHA256`, `NIGHTLY_KEY_PASSWORD`, `STORE_PASSWORD` and
+`RELEASE_TOKEN` secrets plus a `KEYSTORE_PATH` variable, none of which exist here — this
+fork signs with `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`.
+
+Both `.github/workflows/build-nightly.yaml` and `.github/workflows/build-all-flavors-weekly.yml`
+are in the `PROTECTED` list in `scripts/upstream_merge.py`, so an upstream merge cannot hand
+them back to upstream's versions.
 
 ### Syncing with upstream (knighthat/Kreate)
 
