@@ -57,7 +57,6 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper
 import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
 import com.metrolist.music.utils.potoken.PoTokenGenerator
 import java.net.UnknownHostException
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
@@ -79,7 +78,13 @@ private fun methodName(method: Int): String = when (method) {
  * This is created to reduce load to Room
  */
 private val justInserted = AtomicReference("")
-private val cachedStreamUrl = ConcurrentHashMap<String, StreamCache>()
+/**
+ * Resolved stream urls, keyed by videoId. [SingleFlight] rather than a bare map because the
+ * player and the downloader routinely ask for the same song at the same moment; a plain
+ * check-then-act had them both run the whole VR -> IOS -> ANDROID chain and then both fetch
+ * the identical file (observed in a field logcat on 2026-09-03).
+ */
+private val streamUrls = SingleFlight<String, StreamCache>()
 private val logger = Logger.withTag("dataspec")
 private val poTokenGenerator by lazy { PoTokenGenerator() }
 private val jsonParser =
@@ -440,30 +445,22 @@ private fun tryGetPoToken( songId: String ): PoTokenResult? {
     }
 }
 
+/** A cached url is only worth reusing while it has more than 30s of life left. */
+private fun StreamCache.isUsable(): Boolean =
+    expiredTimeMillis - 30.seconds.inWholeMilliseconds > System.currentTimeMillis()
+
 private fun getPlayableUrl( songId: String ): StreamCache = runBlocking( Dispatchers.IO ) {
     logger.v { "Processing $songId" }
 
-    val cache: StreamCache
-    if( cachedStreamUrl.contains(songId) ) {
-        cache = cachedStreamUrl[songId]!!
-        // Handle expired url with 30secs offset
-        if( cache.expiredTimeMillis - 30.seconds.inWholeMilliseconds <= System.currentTimeMillis() ) {
-            logger.d { "Cached stream url of $songId expired" }
+    streamUrls.get( songId, isValid = StreamCache::isUsable ) {
+        logger.i { "Resolving stream url for $songId (no usable cached url)" }
 
-            cachedStreamUrl.remove( songId )
-            return@runBlocking getPlayableUrl( songId )
-        } else
-            logger.d { "Stream url of $songId is cached" }
-    } else {
         val connManager = get<Context>(Context::class.java).getSystemService<ConnectivityManager>()
         val isConnectionMetered = connManager?.isActiveNetworkMetered ?: false
         val audioQuality by Preferences.AUDIO_QUALITY
 
-        cache = makeStreamCache( songId, isConnectionMetered, audioQuality )
-        cachedStreamUrl[songId] = cache
+        makeStreamCache( songId, isConnectionMetered, audioQuality )
     }
-
-    cache
 }
 //</editor-fold>
 
@@ -492,7 +489,7 @@ fun Scope.resolveInnertubeMedia( dataSpec: DataSpec ): DataSpec {
  * @return `true` if song's url was cached, and is deleted, `false` otherwise.
  */
 fun clearCachedStreamUrlOf( songId: String ): Boolean =
-    cachedStreamUrl.remove( songId ) != null
+    streamUrls.invalidate( songId )
 
 private data class StreamCache(
     val cpn: String,
