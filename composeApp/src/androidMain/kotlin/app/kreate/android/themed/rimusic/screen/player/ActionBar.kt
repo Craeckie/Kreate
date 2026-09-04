@@ -41,18 +41,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.cache.Cache
 import androidx.navigation.NavController
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.service.DownloadBadge
-import app.kreate.android.service.DownloadCacheState
 import app.kreate.android.service.player.StatefulPlayer
-import app.kreate.di.CacheType
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.enums.ColorPaletteName
+import it.fast4x.rimusic.enums.DownloadedStateMedia
 import it.fast4x.rimusic.enums.PlayerBackgroundColors
 import it.fast4x.rimusic.enums.PlayerType
 import it.fast4x.rimusic.enums.QueueLoopType
@@ -62,12 +59,10 @@ import it.fast4x.rimusic.ui.components.themed.PlayerMenu
 import it.fast4x.rimusic.ui.styling.LocalAppearance
 import it.fast4x.rimusic.utils.downloadedStateMedia
 import it.fast4x.rimusic.utils.getDownloadState
-import it.fast4x.rimusic.utils.isDownloadedSong
 import it.fast4x.rimusic.utils.isLandscape
 import it.fast4x.rimusic.utils.manageDownload
 import it.fast4x.rimusic.utils.shuffleQueue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.map
 import me.knighthat.component.player.PlaybackSpeed
 import me.knighthat.kreate.composeapp.generated.resources.Res
 import me.knighthat.kreate.composeapp.generated.resources.add_in_playlist
@@ -244,13 +239,6 @@ fun BoxScope.ActionBar(
 
                 val showButtonPlayerDownload by Preferences.PLAYER_ACTION_DOWNLOAD
                 if (showButtonPlayerDownload) {
-                    val cache: Cache = koinInject(CacheType.CACHE)
-                    val isCached by remember {
-                        Database.formatTable
-                                .findBySongId( mediaItem.mediaId )
-                                .map { DownloadCacheState.isFullyCached( cache, mediaItem.mediaId ) }
-                    }.collectAsStateWithLifecycle(false)
-                    val isDownloaded = isDownloadedSong( mediaItem.mediaId )
                     val downloadState = getDownloadState( mediaItem.mediaId )
                     val cacheState = downloadedStateMedia( mediaItem.mediaId )
                     val icon = when( DownloadBadge.of( downloadState, cacheState ) ) {
@@ -258,7 +246,7 @@ fun BoxScope.ActionBar(
                         DownloadBadge.DOWNLOADED     -> Res.drawable.downloaded
                         DownloadBadge.NOT_DOWNLOADED -> Res.drawable.download
                     }
-                    val tint = if( isCached || isDownloaded ) colorPalette.accent else Color.Gray
+                    val tint = if( cacheState != DownloadedStateMedia.NOT_CACHED_OR_DOWNLOADED ) colorPalette.accent else Color.Gray
 
                     ActionButton(
                         resource = icon,
