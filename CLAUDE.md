@@ -107,43 +107,50 @@ This keeps Android's required monotonic ordering: `13801 < 13802 < 13901`, and i
 
 CI will fail if the changelog file is missing or `versionName` matches the latest release tag on this fork.
 
-### Checking upstream (knighthat/Kreate)
+### Syncing with upstream (knighthat/Kreate)
 
-Do not read `git log main..upstream/main` by hand — roughly 85% of it is Crowdin
-churn and dependabot bumps. Run:
+**Merge, don't cherry-pick.** Full rationale and the trap list live in
+[`docs/upstream-merge.md`](./docs/upstream-merge.md) — read it before syncing.
 
 ```bash
-python3 scripts/upstream_check.py            # fetch + report
-python3 scripts/upstream_check.py --no-fetch # offline, use refs already on disk
-python3 scripts/upstream_check.py --all      # include the i18n/deps/ci noise
+python3 scripts/upstream_merge.py            # fetch + dry-run report
+python3 scripts/upstream_merge.py --merge    # merge, auto-resolving PROTECTED paths to ours
+python3 scripts/upstream_merge.py --replay HEAD   # re-analyse an existing merge
 ```
 
-It buckets every outstanding commit by the paths it touches, drops the ones
-already in our history (patch-id via `git cherry`, plus the `cherry picked from
-commit` trailer that `git cherry-pick -x` leaves), drops the ones already ruled
-on in `docs/upstream-triage.tsv`, and test-applies the rest in a throwaway
-worktree so the report says CLEAN or CONFLICT(files) up front. For a commit that
-also bumps a submodule pointer it applies only the superproject paths and
-reports `SUBMODULE+...`, answering whether the app-side hunk stands alone.
+The script buckets everything upstream touched into `CONFLICT` (git stopped),
+`PROTECTED` (our version always wins — auto-resolved), and **`SILENT`** (both
+sides changed the file and git merged it clean). `SILENT` is the dangerous one:
+a clean `git merge` of the 2026-07 batch silently introduced swapped PO tokens,
+a Compose duplicate-key crash, and a `DELETE` that wipes every local file's
+playlist rows. **Read `git diff HEAD -- <path>` for every SILENT and
+ALWAYS REVIEW path before committing**, then verify with a build.
 
-**Always use `git cherry-pick -x`** so the next run can tell what we took, and
-**record every decision** — including the rejections, with the reason — in
-`docs/upstream-triage.tsv` (`<sha>\t taken|skipped|deferred \t<note>`).
-`.github/workflows/upstream-triage.yaml` runs the same script weekly and keeps
-one labelled issue in sync.
+The `PROTECTED` / `ALWAYS_REVIEW` lists at the top of `scripts/upstream_merge.py`
+are the policy; each entry carries its reason. Edit them when a subsystem stops
+being dead or a new one diverges.
 
-Two standing constraints when picking:
+`docs/upstream-triage.tsv` is a notebook, not a gate — a merge does not honour a
+cherry-pick verdict, so anything marked `skipped`/`deferred` arrives anyway
+unless you resolve it back out. The script re-prints those notes for the commits
+a merge would bring in. `scripts/upstream_check.py` still gives the per-commit
+cherry-pick view if you need it.
 
-- **Submodule pointers cannot be bumped from a machine without SSH access.**
-  `modules/innertube` and `modules/metrolist` point at `git@github.com:Craeckie/…`
-  forks, and our `Kreate-innertube` fork is a squashed orphan root that shares no
-  history with upstream's — so an upstream submodule commit is never simply
-  fetchable. A commit needing one is a task for a machine with push access.
+Three standing constraints:
+
+- **Submodule pointers cannot be bumped from this machine.** `modules/innertube`
+  and `modules/metrolist` point at `git@github.com:Craeckie/…` forks and there is
+  no SSH key here; our `Kreate-innertube` fork is a squashed orphan sharing no
+  history with upstream's. Always resolve them to ours.
+- **`origin` is an SSH remote, so `git push` over it fails here.** `gh` is
+  authenticated over HTTPS — push with
+  `git push "https://x-access-token:$(gh auth token)@github.com/Craeckie/Kreate.git" main --tags`.
 - **Much of upstream's playback investment lands on code we do not execute.**
   `com.metrolist.music.utils.YTPlayerUtils` and the whole `utils/cipher/` package
-  have no callers in this fork; our resolver is `InnertubeResolvingDataSource` →
-  `AndroidVrStreamHelper`, deciphering through NewPipe. Check for a live caller
-  before taking a "fix" there.
+  have **zero callers** in this fork; our resolver is
+  `InnertubeResolvingDataSource` → `AndroidVrStreamHelper`. Upstream's rewrite of
+  them also imports submodule symbols we cannot fetch, so it does not even
+  compile here. Check for a live caller before taking a "fix" there.
 
 Submodules `modules/innertube` and `modules/kizzy` must be checked out (`git submodule update --init --recursive`) — they're separate Gradle projects included via `settings.gradle.kts`.
 
