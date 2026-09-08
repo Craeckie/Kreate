@@ -16,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.util.fastMap
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import app.kreate.android.LocalBottomMenu
@@ -39,7 +38,7 @@ import it.fast4x.rimusic.ui.styling.LocalAppearance
 import it.fast4x.rimusic.utils.addNext
 import it.fast4x.rimusic.utils.asMediaItem
 import it.fast4x.rimusic.utils.enqueue
-import it.fast4x.rimusic.utils.forcePlayAtIndex
+import it.fast4x.rimusic.utils.forcePlayTapped
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onEach
 import me.knighthat.component.FolderItem
@@ -88,6 +87,9 @@ fun OnDeviceSong(
     var currentPath by remember( songsOnDevice.values ) {
         mutableStateOf( PathUtils.findCommonPath( songsOnDevice.values ) )
     }
+    var allSongs by remember {
+        mutableStateOf( emptyList<Song>() )
+    }
     LaunchedEffect( Unit ) {
         buttons.add( 0, odSort )
     }
@@ -100,26 +102,30 @@ fun OnDeviceSong(
                }
     }
     LaunchedEffect( songsOnDevice, search.input, currentPath ) {
-        songsOnDevice.keys.filter { !parentalControlEnabled || !it.isExplicit }
-                          .filter {
-                              // [showFolder4LocalSongs] must be false and
-                              // this song must be inside [currentPath] to show song
-                              !showFolder4LocalSongs
-                                      || currentPath.equals( songsOnDevice[it], true )
-                                      || "$currentPath/".equals( songsOnDevice[it], true )
-                          }
-                          .filter {
-                              // Without cleaning, user can search explicit songs with "e:"
-                              // I kinda want this to be a feature, but it seems unnecessary
-                              val containsTitle = search appearsIn it.cleanTitle()
-                              val containsArtist = search appearsIn it.cleanArtistsText()
+        val folderFiltered =
+            songsOnDevice.keys
+                         .filter { !parentalControlEnabled || !it.isExplicit }
+                         .filter {
+                             // [showFolder4LocalSongs] must be false and
+                             // this song must be inside [currentPath] to show song
+                             !showFolder4LocalSongs
+                                     || currentPath.equals( songsOnDevice[it], true )
+                                     || "$currentPath/".equals( songsOnDevice[it], true )
+                         }
+        allSongs = folderFiltered
 
-                              containsTitle || containsArtist
-                          }
-                          .let {
-                              itemsOnDisplay.clear()
-                              itemsOnDisplay.addAll( it )
-                          }
+        folderFiltered.filter {
+                          // Without cleaning, user can search explicit songs with "e:"
+                          // I kinda want this to be a feature, but it seems unnecessary
+                          val containsTitle = search appearsIn it.cleanTitle()
+                          val containsArtist = search appearsIn it.cleanArtistsText()
+
+                          containsTitle || containsArtist
+                      }
+                      .let {
+                          itemsOnDisplay.clear()
+                          itemsOnDisplay.addAll( it )
+                      }
     }
 
     val currentMediaItem by player.currentMediaItemState.collectAsState()
@@ -152,7 +158,7 @@ fun OnDeviceSong(
         itemsIndexed(
             items = itemsOnDisplay,
             key = { _, song -> song.id }
-        ) { index, song ->
+        ) { _, song ->
             val mediaItem = song.asMediaItem
 
             SwipeablePlaylistItem(
@@ -174,17 +180,7 @@ fun OnDeviceSong(
 
                         player.stopRadio()
 
-                        val selectedSongs = getSongs()
-                        if( song in selectedSongs )
-                            player.forcePlayAtIndex(
-                                selectedSongs.fastMap( Song::asMediaItem ),
-                                selectedSongs.indexOf( song )
-                            )
-                        else
-                            player.forcePlayAtIndex(
-                                itemsOnDisplay.fastMap( Song::asMediaItem ),
-                                index
-                            )
+                        player.forcePlayTapped( song, itemSelector, allSongs )
                     },
                     onLongClick = {
                         val page = MenuPage.LocalSong(mediaItem)

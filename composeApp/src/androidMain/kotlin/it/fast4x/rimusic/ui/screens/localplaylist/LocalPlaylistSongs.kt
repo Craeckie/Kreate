@@ -46,7 +46,6 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastFold
-import androidx.compose.ui.util.fastMap
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -117,8 +116,8 @@ import it.fast4x.rimusic.utils.checkFileExists
 import it.fast4x.rimusic.utils.color
 import it.fast4x.rimusic.utils.deleteFileIfExists
 import it.fast4x.rimusic.utils.enqueue
-import it.fast4x.rimusic.utils.forcePlayAtIndex
 import it.fast4x.rimusic.utils.forcePlayFromBeginning
+import it.fast4x.rimusic.utils.forcePlayTapped
 import it.fast4x.rimusic.utils.isAtLeastAndroid14
 import it.fast4x.rimusic.utils.isLandscape
 import it.fast4x.rimusic.utils.manageDownload
@@ -696,17 +695,7 @@ fun LocalPlaylistSongs(
                             onClick = {
                                 player.stopRadio()
 
-                                val selectedSongs = getSongs()
-                                if( song in selectedSongs )
-                                    player.forcePlayAtIndex(
-                                        selectedSongs.fastMap( Song::asMediaItem ),
-                                        selectedSongs.indexOf( song )
-                                    )
-                                else
-                                    player.forcePlayAtIndex(
-                                        allSongs.fastMap( Song::asMediaItem ),
-                                        allSongs.indexOfFirst { it.id == song.id }.coerceAtLeast( 0 )
-                                    )
+                                player.forcePlayTapped( song, itemSelector, allSongs )
 
                                 /*
                                     Due to the small size of checkboxes,

@@ -16,6 +16,7 @@ import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 import app.kreate.android.Preferences
 import app.kreate.android.R
+import app.kreate.database.models.Song
 import co.touchlab.kermit.Logger
 import it.fast4x.rimusic.enums.DurationInMinutes
 import kotlinx.coroutines.CoroutineScope
@@ -144,6 +145,43 @@ fun Player.forcePlayAtIndex(mediaItems: List<MediaItem>, mediaItemIndex: Int) {
 @UnstableApi
 fun Player.forcePlayFromBeginning(mediaItems: List<MediaItem>) =
     forcePlayAtIndex(mediaItems, 0)
+
+/**
+ * Decides what list and index a tap on [song] should play.
+ *
+ * - If [selection] is non-empty and contains [song] (a checkbox selection is an explicit
+ *   choice), play [selection] positioned at [song]'s index within it.
+ * - Otherwise, play the unfiltered [fullList] positioned at [song]'s index within it,
+ *   matched by [Song.id] rather than object equality so a stale/filtered copy still matches.
+ * - If [song] is not found in [fullList] either, fall back to a single-item list holding
+ *   just [song], so a tap never no-ops.
+ */
+fun resolveTapPlayback(
+    song: Song,
+    selection: List<Song>,
+    fullList: List<Song>
+): Pair<List<Song>, Int> {
+    if ( selection.isNotEmpty() ) {
+        val selectionIndex = selection.indexOfFirst { it.id == song.id }
+        if ( selectionIndex != -1 )
+            return selection to selectionIndex
+    }
+
+    val fullListIndex = fullList.indexOfFirst { it.id == song.id }
+    return if ( fullListIndex != -1 )
+        fullList to fullListIndex
+    else
+        listOf( song ) to 0
+}
+
+fun Player.forcePlayTapped(
+    song: Song,
+    selection: List<Song>,
+    fullList: List<Song>
+) {
+    val (songs, index) = resolveTapPlayback( song, selection, fullList )
+    forcePlayAtIndex( songs.map( Song::asMediaItem ), index )
+}
 
 fun Player.forceSeekToPrevious() {
     if (hasPreviousMediaItem() || currentPosition > maxSeekToPreviousPosition) {

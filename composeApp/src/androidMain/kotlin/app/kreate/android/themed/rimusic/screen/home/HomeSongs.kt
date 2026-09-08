@@ -71,7 +71,7 @@ import it.fast4x.rimusic.utils.asMediaItem
 import it.fast4x.rimusic.utils.center
 import it.fast4x.rimusic.utils.color
 import it.fast4x.rimusic.utils.enqueue
-import it.fast4x.rimusic.utils.forcePlayAtIndex
+import it.fast4x.rimusic.utils.forcePlayTapped
 import it.fast4x.rimusic.utils.isDownloadedSong
 import it.fast4x.rimusic.utils.manageDownload
 import it.fast4x.rimusic.utils.semiBold
@@ -115,6 +115,7 @@ fun HomeSongs(
     //</editor-fold>
 
     var items by persistList<Song>( "home/songs" )
+    var allSongs by persistList<Song>( "home/songs/all" )
 
     val songSort = remember {
         Sort(menuState, Preferences.HOME_SONGS_SORT_BY, Preferences.HOME_SONGS_SORT_ORDER)
@@ -210,21 +211,24 @@ fun HomeSongs(
     }
 
     LaunchedEffect( items, search.input ) {
-    items.filter { !parentalControlEnabled || !it.isExplicit }
-         .filter {
-             // Without cleaning, user can search explicit songs with "e:"
-             // I kinda want this to be a feature, but it seems unnecessary
-             val containsTitle = search appearsIn it.cleanTitle()
-             val containsArtist = search appearsIn it.cleanArtistsText()
+        val parentalControlFiltered = items.filter { !parentalControlEnabled || !it.isExplicit }
+        allSongs = parentalControlFiltered
 
-             containsTitle || containsArtist
-         }
-        .let {
-            itemsOnDisplay.clear()
-            itemsOnDisplay.addAll( it )
+        parentalControlFiltered
+            .filter {
+                // Without cleaning, user can search explicit songs with "e:"
+                // I kinda want this to be a feature, but it seems unnecessary
+                val containsTitle = search appearsIn it.cleanTitle()
+                val containsArtist = search appearsIn it.cleanArtistsText()
 
-            isLoading = false
-        }
+                containsTitle || containsArtist
+            }
+            .let {
+                itemsOnDisplay.clear()
+                itemsOnDisplay.addAll( it )
+
+                isLoading = false
+            }
     }
 
     LaunchedEffect( builtInPlaylist ) {
@@ -329,17 +333,7 @@ fun HomeSongs(
 
                         player.stopRadio()
 
-                        val selectedSongs = getSongs()
-                        if( song in selectedSongs )
-                            player.forcePlayAtIndex(
-                                selectedSongs.fastMap( Song::asMediaItem ),
-                                selectedSongs.indexOf( song )
-                            )
-                        else
-                            player.forcePlayAtIndex(
-                                itemsOnDisplay.fastMap( Song::asMediaItem ),
-                                index
-                            )
+                        player.forcePlayTapped( song, itemSelector, allSongs )
                     },
                     onLongClick = {
                         val page = if( song.isLocal ) MenuPage.LocalSong(mediaItem) else MenuPage.Song(mediaItem)
