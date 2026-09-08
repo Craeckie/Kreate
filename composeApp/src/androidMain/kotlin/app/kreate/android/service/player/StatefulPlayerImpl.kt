@@ -1041,6 +1041,11 @@ class StatefulPlayerImpl(
 
             Preferences.Key.AUDIO_REVERB_PRESET -> updateReverb()
 
+            // Audio focus is handed to the player when it's built, so without
+            // this the switch does nothing until the service is recreated.
+            Preferences.Key.AUDIO_SMART_PAUSE_DURING_CALLS ->
+                player.setAudioAttributes( player.audioAttributes, pref.getBoolean(key, true) )
+
             Preferences.Key.QUEUE_LOOP_TYPE ->
                 repeatMode = pref.getEnum( key, QueueLoopType.Default ).type
 
