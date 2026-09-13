@@ -31,10 +31,10 @@ The build matrix is **3 platform flavors × 5 arch flavors × 2 env flavors × 4
 
 # The Android unit tests include a live-network playback test
 # (app.kreate.android.service.innertube.SongPlaybackTest) that walks the real
-# resolver chain — ANDROID_VR -> IOS -> ANDROID progressive — and asserts that
+# resolver chain — VISIONOS -> IOS -> ANDROID progressive — and asserts that
 # *some* client serves byte ranges past the 1-minute mark, guarding the 403 /
 # "stops at ~1 min" regression. It passes as soon as one rung streams the whole
-# track, because that is when a song plays; pinning it to ANDROID_VR alone would
+# track, because that is when a song plays; pinning it to VISIONOS alone would
 # fail over a YouTube change the app already absorbs. It honours the env proxy and
 # SKIPS itself (JUnit assumption) when offline, so it never breaks a no-network
 # build; a hard failure means the whole chain is exhausted and songs genuinely
@@ -179,7 +179,7 @@ Three standing constraints:
 - **Much of upstream's playback investment lands on code we do not execute.**
   `com.metrolist.music.utils.YTPlayerUtils` and the whole `utils/cipher/` package
   have **zero callers** in this fork; our resolver is
-  `InnertubeResolvingDataSource` → `AndroidVrStreamHelper`. Taking upstream's
+  `InnertubeResolvingDataSource` → `VisionOsStreamHelper`. Taking upstream's
   rewrite of them buys nothing at runtime and drags in ~400KB of unused assets.
   Check for a live caller before taking a "fix" there.
 
@@ -228,18 +228,22 @@ The runtime player is wired together via Koin DI. Trace any playback bug through
 
 5. **`PlaybackExceptions` (`it.fast4x.rimusic.service.PlaybackExceptions`)** — domain-specific `PlaybackException` subclasses (`PlayableFormatNotFoundException`, `UnplayableException`, `LoginRequiredException`, `MissingDecipherKeyException`, `NoInternetException`, `TimeoutException`, …). Use these rather than generic exceptions when raising errors from the player layer; they carry `ERROR_CODE_*` ints that the UI layer keys off.
 
-6. **`ErrorHandlingPolicy` (`app.kreate.android.service.player.ErrorHandlingPolicy`)** — returns `false` (not eligible for ExoPlayer's internal retry) for `HttpDataSource.InvalidResponseCodeException`, so a 403 surfaces to `onPlayerError` immediately instead of being silently replayed against the same stale URL 5× first. `StatefulPlayerImpl.onPlayerError` then handles a 403 by clearing the cached URL and re-resolving once (re-resolution restarts at the default `METHOD_ANDROID_VR`), guarded by `retried403Songs` and reset on `STATE_READY`.
+6. **`ErrorHandlingPolicy` (`app.kreate.android.service.player.ErrorHandlingPolicy`)** — returns `false` (not eligible for ExoPlayer's internal retry) for `HttpDataSource.InvalidResponseCodeException`, so a 403 surfaces to `onPlayerError` immediately instead of being silently replayed against the same stale URL 5× first. `StatefulPlayerImpl.onPlayerError` then handles a 403 by clearing the cached URL and re-resolving once (re-resolution restarts at the default `METHOD_VISIONOS`), guarded by `retried403Songs` and reset on `STATE_READY`.
 
 ### YouTube stream resolution: 403 / PO-token / client selection
 
-This is the #1 source of "won't play" reports. Findings (validated 2026-05-30 against yt-dlp 2026.03 and NewPipe, and reproduced with `scripts/vr_probe.py`):
+This is the #1 source of "won't play" reports. Findings validated **2026-09-13** against
+yt-dlp `bbc809a11` (2026-08-30) and NewPipeExtractor `8584a0d63` / tag `v0.26.5`
+(2026-08-15), reproduced with `scripts/vr_probe.py --client all`.
 
 - **Root cause of 403s:** as of 2026 YouTube requires a **GVS (streaming) PO token** for HTTPS playback on the `ANDROID`, `IOS`, `WEB`, and `WEB_EMBEDDED` clients. Kreate does not reliably attach one (the WebView PO token often returns `null`), so those clients fail.
 - **Two surface symptoms, one cause.** Without a pot, YouTube either 403s the URL outright, **or** serves a ~1-minute *teaser* then 403s every later byte range — which presents as **"song starts but stops around the 1-minute mark."** Both are the missing-pot root cause. (`scripts/vr_probe.py` reproduces the teaser-block: on a failing video, IOS returns `206` for ranges at 0s/30s but `403` at 60s/90s/tail.)
 - **`validateStreamUrl` is a weak signal.** Its `HEAD` only probes range `0–512KB` (the teaser), so it passes even for a URL that dies at 60s. Do not treat HEAD-OK as "this URL will play to the end."
-- **The fix — `ANDROID_VR`.** yt-dlp's default JS-less client `android_vr` (clientVersion `1.65.10`) needs **no PO token and no JS player** (no signature cipher). It is tried first (`METHOD_ANDROID_VR`) and streams fully. Built in `app.kreate.android.service.innertube.AndroidVrStreamHelper` — NewPipe v0.26.0 ships no VR helper, so it mutates `InnertubeClientRequestInfo.ofAndroidClient()` into the VR client using NewPipe's public helpers (`YoutubeParsingHelper.prepareJsonBuilder` / `getVisitorDataFromInnertube` / `getValidJsonResponseBody`, `NewPipe.getDownloader()`).
-  - VR caveats (why the legacy chain is kept as fallback): "made for kids" videos return `UNPLAYABLE`, and clientVersion > 1.65 may return SABR-only streams (so the version is pinned).
-- **Not `n`-throttling.** Mobile-client (VR/IOS) URLs carry no `n` throttling param, so the classic throttle-stall is not the mechanism here; `getUrlWithThrottlingParameterDeobfuscated` is a no-op for them.
+- **The fix — `VISIONOS`.** yt-dlp's default JS-less client since PR #17461 (2026-08-18, `_DEFAULT_JSLESS_CLIENTS = ('visionos',)`), replacing `android_vr`: **`ANDROID_VR` 1.65.10 is dead** — yt-dlp: *"Since 2026.08.17, ALL formats (including live HLS and itag 18) are 403'd"*, confirmed here by probe (206 at 0s/30s, 403 from 60s on every video tried). VISIONOS (clientVersion `1.02`) needs **no PO token and no JS player** (no signature cipher) and is tried first (`METHOD_VISIONOS`). Built in `app.kreate.android.service.innertube.VisionOsStreamHelper` — NewPipe v0.26.0 ships no visionOS helper (it lands in v0.26.3+), so it mutates `InnertubeClientRequestInfo.ofAndroidClient()` into the VISIONOS client using NewPipe's public helpers (`YoutubeParsingHelper.prepareJsonBuilder` / `getVisitorDataFromInnertube` / `getValidJsonResponseBody`, `NewPipe.getDownloader()`) — the same technique the old `AndroidVrStreamHelper` used for `ANDROID_VR`.
+  - Caveats (why the legacy chain is kept as fallback): "made for kids" videos return `UNPLAYABLE` → falls to IOS.
+- **The chain is a table, not an `if`.** `VISIONOS → VISIONOS+pot (only on LOGIN_REQUIRED) → IOS+pot → ANDROID progressive → error` lives in `app.kreate.di.InnertubeFallbackPolicy.nextFallback`, a pure function with its own unit test (`InnertubeFallbackPolicyTest`). **Any new rung goes into that table, never as an ad-hoc `if` in `makeStreamCache`** — the 2026-09-13 endless-loading report (Kreate #93) was exactly such an `if` (a retry-with-pot branch missing a `method ==` guard), which sent `ANDROID`'s `LOGIN_REQUIRED` back into `IOS` forever: 241 iterations in 80s with no depth guard anywhere in the recursion. `fallbackOrThrow` in `InnertubeResolvingDataSource.kt` now also caps the chain at `MAX_FALLBACK_DEPTH` regardless.
+- **NewPipe pin.** `gradle/libs.versions.toml` pins `newpipe-extractor = "v0.26.0"`. v0.26.3–v0.26.5 add `getVisionOsPlayerResponse`/`ofVisionOsClient` (usable in principle to delete `VisionOsStreamHelper`), but NewPipeExtractor master (`9ed62db3a`, unreleased at 2026-09-13) *removes* `getIosPlayerResponse`/`getAndroidPlayerResponse`/`ofAndroidClient`, which the `IOS` and `ANDROID` rungs and both helpers depend on. **Do not bump past v0.26.5 without replacing those rungs first.**
+- **Not `n`-throttling.** Mobile-client (VISIONOS/IOS) URLs carry no `n` throttling param, so the classic throttle-stall is not the mechanism here; `getUrlWithThrottlingParameterDeobfuscated` is a no-op for them.
 
 **When investigating a "won't play" / "stops partway" report:**
 
@@ -257,19 +261,20 @@ This is the #1 source of "won't play" reports. Findings (validated 2026-05-30 ag
 
 3. **Interpret the summary:**
    - `[CRITICAL] CipherDeobfuscator.appContext not initialized` → `CipherDeobfuscator.initialize(this)` is missing from `MainApplication.onCreate()`. This causes `PlayerJsFetcher` and `PoTokenGenerator` to crash for *every* song.
-   - `[WARN] music.youtube.com/player returned 400` → YouTube is blocking the IP or fingerprinting `WEB_REMIX`. The fallback chain (ANDROID_VR etc.) should activate — if it doesn't, check that the main client uses `getOrNull()` not `getOrThrow()` at `YTPlayerUtils.kt` line ~123.
-   - `[WARN] PO-token generation failed` + no `[OK] Successful playback resolutions` → all web clients fail. ANDROID_VR clients should not need a PO token.
+   - `[WARN] music.youtube.com/player returned 400` → YouTube is blocking the IP or fingerprinting `WEB_REMIX`. The fallback chain (VISIONOS etc.) should activate — if it doesn't, check that the main client uses `getOrNull()` not `getOrThrow()` at `YTPlayerUtils.kt` line ~123.
+   - `[WARN] PO-token generation failed` + no `[OK] Successful playback resolutions` → all web clients fail. VISIONOS should not need a PO token.
    - `[ERROR] All clients exhausted` → check `STREAM_FALLBACK_CLIENTS` in `YTPlayerUtils.kt` vs yt-dlp `INNERTUBE_CLIENTS` to see what changed.
-   - `[WARN] 403 on stream URL` → ANDROID_VR URL expiry or a VR client version YouTube no longer accepts. Check `ANDROID_VR_1_43_32` / `ANDROID_VR_1_61_48` clientVersions against yt-dlp.
+   - `[WARN] 403 on stream URL` → check VISIONOS's `CLIENT_VERSION` in `VisionOsStreamHelper.kt` against yt-dlp's `visionos` client entry.
 
 4. **Probe without a device:**
    ```bash
-   python3 scripts/vr_probe.py <videoId>          # VR vs IOS byte-range probe
-   python3 scripts/vr_probe.py <videoId> --client VR   # VR only
+   python3 scripts/vr_probe.py <videoId>                    # VR vs IOS byte-range probe
+   python3 scripts/vr_probe.py <videoId> --client VISIONOS  # VISIONOS only
+   python3 scripts/vr_probe.py <videoId> --client all       # VR, IOS, VISIONOS
    ```
    Distinguishes outright-403, ~1-min teaser-block, and throttling.
 
-5. **Reference extractors** (checked out in-repo): `yt-dlp/yt_dlp/extractor/youtube/` (esp. `_base.py` `INNERTUBE_CLIENTS` and PO-token policies) and `NewPipeExtractor/extractor/`. Check these when YouTube changes client requirements.
+5. **Reference extractors** (checked out in-repo): `git -C yt-dlp pull --ff-only && git -C NewPipeExtractor pull --ff-only` **before** reading them — a stale checkout confirms stale conclusions. On 2026-09-13 the previously-checked-out commit still listed `android_vr` as a healthy default; the pulled one (`yt-dlp` `bbc809a11`, `NewPipeExtractor` `8584a0d63`) showed it removed on 2026-08-18, which changed the fix entirely. Then check `yt-dlp/yt_dlp/extractor/youtube/_base.py` (esp. `INNERTUBE_CLIENTS`, `_DEFAULT_JSLESS_CLIENTS`, and PO-token policies) and `NewPipeExtractor/extractor/`.
 
 ### Database
 

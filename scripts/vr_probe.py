@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Validate the ANDROID_VR resolution path AND diagnose the "starts, then stops
+Validate the VISIONOS resolution path AND diagnose the "starts, then stops
 near ~1 min" symptom, without an Android build.
 
-Replicates the InnerTube player request AndroidVrStreamHelper.kt builds
-(mutated ofAndroidClient -> ANDROID_VR 1.65.10) and compares with the legacy IOS
-path. Two failure modes are checked, both bounded so the run is quick:
+Replicates the InnerTube player request VisionOsStreamHelper.kt builds
+(mutated ofAndroidClient -> VISIONOS 1.02) and compares with the legacy IOS
+path (and the now-dead ANDROID_VR, kept here for reference/regression checks).
+Two failure modes are checked, both bounded so the run is quick:
 
   1. Late-range 403  -> server serves the first ~minute then rejects later byte
      ranges (needs a PO token).  Emulated with real HTTP Range headers, the way
@@ -13,7 +14,7 @@ path. Two failure modes are checked, both bounded so the run is quick:
   2. n-throttling     -> first buffer is fast, the rest crawls below real-time so
      playback stalls once the buffer drains.  Sampled for a few seconds only.
 
-Usage:  python3 vr_probe.py [videoId ...] [--client VR|IOS|both]
+Usage:  python3 vr_probe.py [videoId ...] [--client VR|IOS|VISIONOS|both|all]
 """
 import json
 import sys
@@ -48,6 +49,18 @@ CLIENTS = {
         },
         "ua": "com.google.ios.youtube/21.03.2 (iPhone16,2; U; CPU iOS 18_7_2 like Mac OS X;)",
         "cn": "5", "cv": "21.03.2",
+    },
+    "VISIONOS": {
+        "host": YOUTUBEI,
+        "client": {
+            "clientName": "VISIONOS", "clientVersion": "1.02",
+            "platform": "DESKTOP", "deviceMake": "Apple", "deviceModel": "RealityDevice17,1",
+            "osName": "visionOS", "osVersion": "26.5.23O471",
+            "hl": "en", "gl": "US", "utcOffsetMinutes": 0,
+        },
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 "
+              "(KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+        "cn": "101", "cv": "1.02",
     },
 }
 
@@ -168,7 +181,8 @@ def main():
     if "--client" in args:
         i = args.index("--client"); which = args[i + 1]; del args[i:i + 2]
     vids = args or ["dQw4w9WgXcQ"]
-    names = {"VR": ["VR"], "IOS": ["IOS"], "both": ["VR", "IOS"]}[which]
+    names = {"VR": ["VR"], "IOS": ["IOS"], "VISIONOS": ["VISIONOS"],
+             "both": ["VR", "IOS"], "all": ["VR", "IOS", "VISIONOS"]}[which]
     for vid in vids:
         print(f"\n=== {vid} ===")
         for name in names:
