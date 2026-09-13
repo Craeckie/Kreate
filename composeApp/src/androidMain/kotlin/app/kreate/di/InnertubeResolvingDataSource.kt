@@ -62,16 +62,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 
-private const val METHOD_ANDROID_VR = 0
-private const val METHOD_ANDROID = 1
-private const val METHOD_IOS = 2
-
-private fun methodName(method: Int): String = when (method) {
-    METHOD_ANDROID_VR -> "ANDROID_VR"
-    METHOD_ANDROID    -> "ANDROID"
-    METHOD_IOS        -> "IOS"
-    else              -> "unknown($method)"
-}
+/** Resolver chain hops past which [fallbackOrThrow] gives up rather than keep retrying. */
+private const val MAX_FALLBACK_DEPTH = 5
 
 /**
  * Store id of song just added to the database.
@@ -305,7 +297,8 @@ private suspend fun makeStreamCache(
     isConnectionMetered: Boolean,
     audioQuality: AudioQualityFormat,
     method: Int = METHOD_ANDROID_VR,
-    poToken: PoTokenResult? = null
+    poToken: PoTokenResult? = null,
+    depth: Int = 0
 ): StreamCache {
     logger.v { "Getting online stream url for \"$songId\" with method ${methodName(method)}" }
     logger.d { "Is connection metered: $isConnectionMetered" }
@@ -366,74 +359,86 @@ private suspend fun makeStreamCache(
             val expiredTimeMillis = System.currentTimeMillis() +
                 (response.streamingData?.expiresInSeconds?.toLong()?.times(1000L) ?: 1.hours.inWholeMilliseconds)
             StreamCache(cpn, contentLength, streamUrl, expiredTimeMillis)
-        } else when( method ) {
-            METHOD_ANDROID_VR -> {
-                // VR's url didn't validate — fall back to IOS, giving it a PO token (IOS
-                // needs a GVS pot to stream past the teaser).
-                logger.i { "ANDROID_VR stream url for $songId failed validation; falling back to IOS" }
-                makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
-            }
-            METHOD_IOS -> {
-                // IOS teaser-blocked — try the plain ANDROID client's pot-free progressive
-                // (itag 18/22) muxed stream as a last resort before giving up.
-                logger.i { "IOS stream url for $songId teaser-blocked; falling back to ANDROID progressive" }
-                makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID, null )
-            }
-            else -> {
-                // ANDROID progressive also failed — no playable url from any client. Surface as
-                // unplayable so onPlayerError's auto-rematch finds a playable alternative.
-                logger.w { "ANDROID progressive url for $songId failed validation; marking unplayable" }
-                throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
-            }
+        } else {
+            fallbackOrThrow( songId, isConnectionMetered, audioQuality, method, poToken, depth, RungFailure.UrlRejected )
         }
     } catch( e: Exception ) {
-        if( method == METHOD_ANDROID_VR ) {
-            // YouTube bot-detection: retry VR with a PO token before falling back to IOS
-            if( e is LoginRequiredException && poToken == null ) {
-                logger.i { "LOGIN_REQUIRED on VR for $songId — generating PO token and retrying" }
-                val pot = tryGetPoToken( songId )
-                return if( pot != null )
-                    makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID_VR, pot )
-                else
-                    makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, null )
-            }
-            logger.i { "ANDROID_VR failed for $songId (${e::class.simpleName}: ${e.message}); falling back to IOS" }
-            // VR couldn't serve this video; IOS may, but only with a GVS PO token.
-            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, poToken ?: tryGetPoToken( songId ) )
-        }
-
-        // IOS also returned LOGIN_REQUIRED without a PO token — try once more with one
-        if( e is LoginRequiredException && poToken == null ) {
-            logger.i { "LOGIN_REQUIRED on IOS for $songId — generating PO token and retrying" }
-            val pot = tryGetPoToken( songId )
-            if( pot != null )
-                return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_IOS, pot )
-        }
-
-        // IOS failed for any other reason — try the pot-free ANDROID progressive client last.
-        if( method == METHOD_IOS ) {
-            logger.i { "IOS failed for $songId (${e::class.simpleName}: ${e.message}); falling back to ANDROID progressive" }
-            return makeStreamCache( songId, isConnectionMetered, audioQuality, METHOD_ANDROID, null )
-        }
-
-        when( e ) {
-            is UnknownHostException,
-            is UnresolvedAddressException -> {
-                // Make sure it's not a temporary network fluctuation
-                if( !ConnectivityUtils.isAvailable.value )
-                    throw NoInternetException(e)
-            }
-
-            // Only show this exception because this needs update
-            // Other errors might be because of unsuccessful stream extraction
-            is MissingFieldException -> {
-                e.message?.also( Toaster::e )
-                logger.e( "", e )
-            }
-        }
-
-        throw e
+        return fallbackOrThrow( songId, isConnectionMetered, audioQuality, method, poToken, depth, RungFailure.Threw(e) )
     }
+}
+
+/**
+ * Decides, logs and executes the resolver's next hop (or gives up) after [method] failed for
+ * [songId] with [failure]. The decision itself lives in the pure [nextFallback] table; this
+ * function's job is only to turn that decision into a PO token (generating one when needed) and
+ * either a recursive [makeStreamCache] call or a thrown exception.
+ *
+ * [depth] guards against a chain that — through a bug in [nextFallback] or a future rung added
+ * to it — stops terminating; [MAX_FALLBACK_DEPTH] is comfortably above the longest legitimate
+ * chain (VR -> VR+pot -> IOS+pot -> ANDROID, depth 3).
+ */
+@OptIn(ExperimentalSerializationApi::class)
+private suspend fun fallbackOrThrow(
+    songId: String,
+    isConnectionMetered: Boolean,
+    audioQuality: AudioQualityFormat,
+    method: Int,
+    poToken: PoTokenResult?,
+    depth: Int,
+    failure: RungFailure
+): StreamCache {
+    if( depth >= MAX_FALLBACK_DEPTH ) {
+        logger.w { "Resolver chain for $songId exceeded $MAX_FALLBACK_DEPTH hops; giving up" }
+        throw UnplayableException( "resolver chain exhausted" )
+    }
+
+    var next = nextFallback( method, failure, hadPoToken = poToken != null )
+    var pot: PoTokenResult? = null
+    if( next?.withPoToken == true ) {
+        pot = poToken ?: tryGetPoToken( songId )
+        if( pot == null && next.method == method ) {
+            // A same-rung retry needs a pot we cannot produce: behave as if that retry had
+            // already failed, so the chain moves on instead of calling the same rung again
+            // with the same (null) pot it just failed with.
+            next = nextFallback( method, failure, hadPoToken = true )
+            if( next?.withPoToken == true ) pot = null   // downstream rung will attempt its own pot retry
+        }
+    }
+
+    if( next == null ) {
+        when( failure ) {
+            is RungFailure.UrlRejected -> {
+                logger.w { "${methodName(method)} url for $songId failed validation; no rung left, marking unplayable" }
+                throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
+            }
+            is RungFailure.Threw -> {
+                val e = failure.cause
+                when( e ) {
+                    is UnknownHostException,
+                    is UnresolvedAddressException -> {
+                        // Make sure it's not a temporary network fluctuation
+                        if( !ConnectivityUtils.isAvailable.value )
+                            throw NoInternetException(e)
+                    }
+
+                    // Only show this exception because this needs update
+                    // Other errors might be because of unsuccessful stream extraction
+                    is MissingFieldException -> {
+                        e.message?.also( Toaster::e )
+                        logger.e( "", e )
+                    }
+                }
+                throw e
+            }
+        }
+    }
+
+    val why = when( failure ) {
+        is RungFailure.UrlRejected -> "url failed validation"
+        is RungFailure.Threw       -> "${failure.cause::class.simpleName}: ${failure.cause.message}"
+    }
+    logger.i { "${methodName(method)} failed for $songId ($why); trying ${methodName(next.method)}${if( pot != null ) " with PO token" else ""}" }
+    return makeStreamCache( songId, isConnectionMetered, audioQuality, next.method, pot, depth + 1 )
 }
 
 private fun tryGetPoToken( songId: String ): PoTokenResult? {

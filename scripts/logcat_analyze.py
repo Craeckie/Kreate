@@ -44,7 +44,7 @@ PATTERNS = [
     ("vr_method",          re.compile(r"Getting online stream url for \"(\S+)\" with method (\S+)")),
     ("unavailable",        re.compile(r"Playability status not OK.*This video is unavailable")),
     # current fallback/validation/rematch flow (InnertubeResolvingDataSource + StatefulPlayerImpl)
-    ("vr_fallback",        re.compile(r"ANDROID_VR failed for (\S+) \(([^)]+)\); falling back to IOS")),
+    ("vr_fallback",        re.compile(r"(\S+) failed for (\S+) \(([^)]+)\); trying (\S+)")),
     ("range_rejected",     re.compile(r"Stream url range (\S+) rejected: HTTP (\d+)")),
     ("marking_unplayable", re.compile(r"(\S+) stream url for (\S+) failed validation")),
     ("unplayable_exc",     re.compile(r"UnplayableException: (.+)")),
@@ -201,8 +201,13 @@ def analyze(lines, filter_video=None, verbose=False):
                       f"likely missing PO token on WEB/IOS client")
 
     if counts["vr_fallback"]:
-        issues.append(f"  [INFO] ANDROID_VR fell back to IOS {counts['vr_fallback']}x "
-                      f"— VR returned UNPLAYABLE/empty; IOS attempted next")
+        hops = defaultdict(int)
+        for _, t, g, _ in events:
+            if t == "vr_fallback" and len(g) > 3:
+                hops[(g[0], g[3])] += 1
+        summary = ", ".join(f"{frm}→{to}×{n}" for (frm, to), n in hops.items())
+        issues.append(f"  [INFO] resolver fell back {counts['vr_fallback']}x ({summary}) "
+                      f"— a rung failed and the chain moved on")
 
     if counts["marking_unplayable"]:
         vids = sorted({g[1] for _, t, g, _ in events if t == "marking_unplayable" and len(g) > 1})
