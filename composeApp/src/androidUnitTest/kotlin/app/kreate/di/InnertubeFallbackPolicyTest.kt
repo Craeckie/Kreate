@@ -26,34 +26,34 @@ class InnertubeFallbackPolicyTest {
     private val urlRejected = RungFailure.UrlRejected
 
     @Test
-    fun vrLoginRequiredWithoutPotRetriesVrWithPot() {
+    fun visionOsLoginRequiredWithoutPotRetriesVisionOsWithPot() {
         assertEquals(
-            Fallback(METHOD_ANDROID_VR, withPoToken = true),
-            nextFallback(METHOD_ANDROID_VR, loginRequired, hadPoToken = false)
+            Fallback(METHOD_VISIONOS, withPoToken = true),
+            nextFallback(METHOD_VISIONOS, loginRequired, hadPoToken = false)
         )
     }
 
     @Test
-    fun vrLoginRequiredWithPotFallsToIos() {
+    fun visionOsLoginRequiredWithPotFallsToIos() {
         assertEquals(
             Fallback(METHOD_IOS, withPoToken = true),
-            nextFallback(METHOD_ANDROID_VR, loginRequired, hadPoToken = true)
+            nextFallback(METHOD_VISIONOS, loginRequired, hadPoToken = true)
         )
     }
 
     @Test
-    fun vrOtherExceptionFallsToIos() {
+    fun visionOsOtherExceptionFallsToIos() {
         assertEquals(
             Fallback(METHOD_IOS, withPoToken = true),
-            nextFallback(METHOD_ANDROID_VR, otherException, hadPoToken = false)
+            nextFallback(METHOD_VISIONOS, otherException, hadPoToken = false)
         )
     }
 
     @Test
-    fun vrUrlRejectedFallsToIos() {
+    fun visionOsUrlRejectedFallsToIos() {
         assertEquals(
             Fallback(METHOD_IOS, withPoToken = true),
-            nextFallback(METHOD_ANDROID_VR, urlRejected, hadPoToken = false)
+            nextFallback(METHOD_VISIONOS, urlRejected, hadPoToken = false)
         )
     }
 
@@ -112,7 +112,7 @@ class InnertubeFallbackPolicyTest {
 
     @Test
     fun chainTerminatesEvenWhenEveryRungReportsLoginRequired() {
-        var method = METHOD_ANDROID_VR
+        var method = METHOD_VISIONOS
         var hadPoToken = false
         var steps = 0
 

@@ -12,33 +12,36 @@ import java.nio.charset.StandardCharsets
 
 
 /**
- * Builds a player request for the `ANDROID_VR` InnerTube client.
+ * Builds a player request for the `VISIONOS` InnerTube client.
  *
- * NewPipe v0.26.0 ships no `android_vr` helper, so this mirrors NewPipe's own
- * [org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper] flow using
- * only its public APIs (it mutates the [InnertubeClientRequestInfo.ofAndroidClient]
- * instance into the VR client).
+ * NewPipe v0.26.0 ships no `visionos` helper (it lands in v0.26.3's
+ * `YoutubeStreamHelper.getVisionOsPlayerResponse` / `InnertubeClientRequestInfo.ofVisionOsClient`,
+ * neither of which this app's pinned v0.26.0 has), so this mirrors that flow using only NewPipe
+ * v0.26.0's public APIs — the same approach the former `AndroidVrStreamHelper` used for
+ * `ANDROID_VR` (it mutates the [InnertubeClientRequestInfo.ofAndroidClient] instance into the
+ * VISIONOS client).
  *
- * Why VR: per yt-dlp's client table, `android_vr` (clientVersion [CLIENT_VERSION])
- * requires **neither a PO token nor the JS player** (no signature cipher, no auth),
- * which makes it the most reliable pot-free path for plain audio playback — the
- * ANDROID/IOS/WEB clients now all 403 on the media GET without a GVS PO token.
+ * Why VISIONOS: yt-dlp made it the default JS-less client (`_DEFAULT_JSLESS_CLIENTS =
+ * ('visionos',)`, PR #17461, 2026-08-18), replacing `android_vr` — YouTube 403s ANDROID_VR
+ * 1.65.10 on every format since 2026-08-17. Like the VR client it replaces, VISIONOS
+ * (clientVersion [CLIENT_VERSION]) requires **neither a PO token nor the JS player** (no
+ * signature cipher, no auth), making it the most reliable pot-free path for plain audio playback.
  *
  * Caveats documented by yt-dlp (kept in mind by the caller's fallback chain):
- * - "Made for kids" videos are unavailable with this client.
- * - A clientVersion above 1.65 may return SABR-only streams, so it is pinned.
+ * - "Made for kids" videos are unavailable with this client (surfaces as UNPLAYABLE, handled by
+ *   falling back to IOS).
  */
-object AndroidVrStreamHelper {
+object VisionOsStreamHelper {
 
-    private const val CLIENT_NAME = "ANDROID_VR"
-    private const val CLIENT_VERSION = "1.65.10"
-    private const val CLIENT_ID = "28"
-    private const val USER_AGENT =
-        "com.google.android.apps.youtube.vr.oculus/1.65.10 " +
-        "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+    private const val CLIENT_NAME = "VISIONOS"
+    private const val CLIENT_VERSION = "1.02"
+    private const val CLIENT_ID = "101"
+    const val USER_AGENT =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 " +
+        "(KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
     /**
-     * @param vrPoTokenResult optional PO token result from [com.metrolist.music.utils.potoken.PoTokenGenerator].
+     * @param poTokenResult optional PO token result from [com.metrolist.music.utils.potoken.PoTokenGenerator].
      *   When non-null its [visitorData][org.schabi.newpipe.extractor.services.youtube.PoTokenResult.visitorData]
      *   is used directly (skipping the extra visitor_id round-trip) and
      *   `serviceIntegrityDimensions.poToken` is added to the request body so YouTube's
@@ -46,24 +49,25 @@ object AndroidVrStreamHelper {
      * @return the raw `player` response as a nanojson [JsonObject], matching the
      * shape returned by NewPipe's helpers so it slots into the existing parse path.
      */
-    fun getAndroidVrPlayerResponse(
+    fun getVisionOsPlayerResponse(
         contentCountry: ContentCountry,
         localization: Localization,
         videoId: String,
         cpn: String,
-        vrPoTokenResult: org.schabi.newpipe.extractor.services.youtube.PoTokenResult? = null
+        poTokenResult: org.schabi.newpipe.extractor.services.youtube.PoTokenResult? = null
     ): JsonObject {
         val info = InnertubeClientRequestInfo.ofAndroidClient().apply {
             clientInfo.clientName = CLIENT_NAME
             clientInfo.clientVersion = CLIENT_VERSION
             clientInfo.clientId = CLIENT_ID
-            // android_vr does not send a clientScreen
+            // visionos does not send a clientScreen
             clientInfo.clientScreen = null
-            deviceInfo.deviceMake = "Oculus"
-            deviceInfo.deviceModel = "Quest 3"
-            deviceInfo.osName = "Android"
-            deviceInfo.osVersion = "12L"
-            deviceInfo.androidSdkVersion = 32
+            deviceInfo.platform = null
+            deviceInfo.deviceMake = "Apple"
+            deviceInfo.deviceModel = "RealityDevice17,1"
+            deviceInfo.osName = "visionOS"
+            deviceInfo.osVersion = "26.5.23O471"
+            deviceInfo.androidSdkVersion = 0
         }
 
         val headers: MutableMap<String, List<String>> = mutableMapOf(
@@ -73,7 +77,7 @@ object AndroidVrStreamHelper {
         headers.putAll( YoutubeParsingHelper.getClientHeaders( CLIENT_ID, CLIENT_VERSION ) )
 
         // If a PO token is available use its visitorData directly; otherwise fetch a fresh one.
-        info.clientInfo.visitorData = vrPoTokenResult?.visitorData
+        info.clientInfo.visitorData = poTokenResult?.visitorData
             ?: YoutubeParsingHelper.getVisitorDataFromInnertube(
                 info,
                 localization,
@@ -93,14 +97,15 @@ object AndroidVrStreamHelper {
                .value( "racyCheckOk", true )
 
         // Attach the player PO token when provided so YouTube's bot-detection is satisfied.
-        if ( vrPoTokenResult != null ) {
+        if ( poTokenResult != null ) {
             builder.`object`( "serviceIntegrityDimensions" )
-                   .value( "poToken", vrPoTokenResult.playerRequestPoToken )
+                   .value( "poToken", poTokenResult.playerRequestPoToken )
                    .end()
         }
 
         val body = JsonWriter.string( builder.done() ).toByteArray( StandardCharsets.UTF_8 )
-        // android_vr uses the regular www.youtube.com host (not the gapis host).
+        // visionos uses the regular www.youtube.com host (verified by scripts/vr_probe.py --client
+        // all to stream fully, unlike the gapis host).
         val url = YoutubeParsingHelper.YOUTUBEI_V1_URL + "player?" +
                   YoutubeParsingHelper.DISABLE_PRETTY_PRINT_PARAMETER
 

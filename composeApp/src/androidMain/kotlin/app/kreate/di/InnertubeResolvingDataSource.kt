@@ -13,7 +13,7 @@ import androidx.media3.datasource.DataSpec
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.service.innertube.AndroidStreamHelper
-import app.kreate.android.service.innertube.AndroidVrStreamHelper
+import app.kreate.android.service.innertube.VisionOsStreamHelper
 import app.kreate.android.utils.CharUtils
 import app.kreate.android.utils.ConnectivityUtils
 import app.kreate.android.utils.innertube.CURRENT_LOCALE
@@ -296,7 +296,7 @@ private suspend fun makeStreamCache(
     songId: String,
     isConnectionMetered: Boolean,
     audioQuality: AudioQualityFormat,
-    method: Int = METHOD_ANDROID_VR,
+    method: Int = METHOD_VISIONOS,
     poToken: PoTokenResult? = null,
     depth: Int = 0
 ): StreamCache {
@@ -311,7 +311,7 @@ private suspend fun makeStreamCache(
             ContentCountry(regionCode) to Localization(languageCode)
         }
         val jsonResponse = when (method) {
-            METHOD_ANDROID_VR -> AndroidVrStreamHelper.getAndroidVrPlayerResponse(gl, hl, songId, cpn, poToken)
+            METHOD_VISIONOS   -> VisionOsStreamHelper.getVisionOsPlayerResponse(gl, hl, songId, cpn, poToken)
             METHOD_ANDROID    -> AndroidStreamHelper.getAndroidPlayerResponse(gl, hl, songId, cpn)
             else              -> YoutubeStreamHelper.getIosPlayerResponse(gl, hl, songId, cpn, poToken)
         }
@@ -375,7 +375,7 @@ private suspend fun makeStreamCache(
  *
  * [depth] guards against a chain that — through a bug in [nextFallback] or a future rung added
  * to it — stops terminating; [MAX_FALLBACK_DEPTH] is comfortably above the longest legitimate
- * chain (VR -> VR+pot -> IOS+pot -> ANDROID, depth 3).
+ * chain (VISIONOS -> VISIONOS+pot -> IOS+pot -> ANDROID, depth 3).
  */
 @OptIn(ExperimentalSerializationApi::class)
 private suspend fun fallbackOrThrow(
@@ -489,7 +489,7 @@ fun Scope.resolveInnertubeMedia( dataSpec: DataSpec ): DataSpec {
     upsertSongInfo( get(), songId )
 
     val cache = getPlayableUrl( songId )
-    // ANDROID_VR URLs carry no `n` throttling param, so deobfuscation is a no-op for them;
+    // VISIONOS URLs carry no `n` throttling param, so deobfuscation is a no-op for them;
     // it is kept for correctness when IOS is used as fallback.
     val deobUrl = YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated( songId, cache.playableUrl )
     val length = cache.contentLength

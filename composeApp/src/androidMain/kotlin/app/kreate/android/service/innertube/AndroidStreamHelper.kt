@@ -14,12 +14,12 @@ import java.nio.charset.StandardCharsets
 /**
  * Builds a player request for the plain `ANDROID` InnerTube client.
  *
- * Sibling of [AndroidVrStreamHelper]; uses NewPipe's [InnertubeClientRequestInfo.ofAndroidClient]
+ * Sibling of [VisionOsStreamHelper]; uses NewPipe's [InnertubeClientRequestInfo.ofAndroidClient]
  * defaults (clientName `ANDROID`, the bundled client version) without mutating it, and skips the
  * PO token that [org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper.getAndroidPlayerResponse]
  * insists on.
  *
- * Why this exists: for some videos `ANDROID_VR` returns `UNPLAYABLE` and the `IOS`/`WEB` clients
+ * Why this exists: for some videos `VISIONOS` returns `UNPLAYABLE` and the `IOS`/`WEB` clients
  * only serve a pot-blocked teaser, yet the plain `ANDROID` client still returns a **progressive**
  * muxed format (itag 18 / 22) with a *direct, un-ciphered, pot-free* URL that streams to the end.
  * That format is lower quality (≈70-100 kbps AAC, 360p video we ignore), so it is only used as a

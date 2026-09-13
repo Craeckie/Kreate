@@ -3,15 +3,15 @@ package app.kreate.di
 import it.fast4x.rimusic.service.LoginRequiredException
 
 
-internal const val METHOD_ANDROID_VR = 0
+internal const val METHOD_VISIONOS = 0
 internal const val METHOD_ANDROID = 1
 internal const val METHOD_IOS = 2
 
 internal fun methodName(method: Int): String = when (method) {
-    METHOD_ANDROID_VR -> "ANDROID_VR"
-    METHOD_ANDROID    -> "ANDROID"
-    METHOD_IOS        -> "IOS"
-    else              -> "unknown($method)"
+    METHOD_VISIONOS -> "VISIONOS"
+    METHOD_ANDROID  -> "ANDROID"
+    METHOD_IOS      -> "IOS"
+    else            -> "unknown($method)"
 }
 
 /** Why the current rung did not produce a playable url. */
@@ -33,8 +33,8 @@ internal data class Fallback(val method: Int, val withPoToken: Boolean)
 internal fun nextFallback(method: Int, failure: RungFailure, hadPoToken: Boolean): Fallback? {
     val loginRequired = failure is RungFailure.Threw && failure.cause is LoginRequiredException
     return when (method) {
-        METHOD_ANDROID_VR -> when {
-            loginRequired && !hadPoToken -> Fallback(METHOD_ANDROID_VR, withPoToken = true)
+        METHOD_VISIONOS -> when {
+            loginRequired && !hadPoToken -> Fallback(METHOD_VISIONOS, withPoToken = true)
             else                         -> Fallback(METHOD_IOS, withPoToken = true)
         }
         METHOD_IOS -> when {

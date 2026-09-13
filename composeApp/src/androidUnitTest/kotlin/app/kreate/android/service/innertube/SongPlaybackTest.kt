@@ -29,7 +29,7 @@ import kotlin.test.fail
  * question. It exercises the real stream-resolution path used at runtime against
  * YouTube and asserts:
  *
- *  1. the `ANDROID_VR` client resolves the video to a direct (non-ciphered) audio
+ *  1. the `VISIONOS` client resolves the video to a direct (non-ciphered) audio
  *     stream url, and
  *  2. **some** client in the resolver's fallback chain streams **past the
  *     one-minute mark** — i.e. ranged byte requests at 0s / 60s / 120s and the
@@ -40,9 +40,9 @@ import kotlin.test.fail
  * user sees as "the song starts but stops around 1 minute".
  *
  * It asks the same question the app does, and must therefore accept the same
- * answer. `InnertubeResolvingDataSource` walks `ANDROID_VR` → `IOS` → `ANDROID`
+ * answer. `InnertubeResolvingDataSource` walks `VISIONOS` → `IOS` → `ANDROID`
  * (progressive itag 18/22) and a song plays as long as *any* of them serves the
- * whole track, so pinning the assertion to `ANDROID_VR` alone would fail the
+ * whole track, so pinning the assertion to `VISIONOS` alone would fail the
  * build over a YouTube-side change the app already survives. Only an exhausted
  * chain means songs genuinely will not play. See the *YouTube stream resolution*
  * section of `CLAUDE.md` and `scripts/vr_probe.py`.
@@ -55,10 +55,6 @@ class SongPlaybackTest {
     private companion object {
         /** A widely-available, non-age-restricted, non-"made for kids" video. */
         const val VIDEO_ID = "dQw4w9WgXcQ"
-
-        const val VR_USER_AGENT =
-            "com.google.android.apps.youtube.vr.oculus/1.65.10 " +
-            "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
 
         /** Offsets (seconds into the track) whose byte ranges must be servable. */
         val PROBE_SECONDS = listOf( 0, 60, 120 )
@@ -104,7 +100,7 @@ class SongPlaybackTest {
 
     private fun resolveAudioFormat(): JsonObject {
         val response = overNetwork {
-            AndroidVrStreamHelper.getAndroidVrPlayerResponse(
+            VisionOsStreamHelper.getVisionOsPlayerResponse(
                 ContentCountry.DEFAULT, Localization.DEFAULT, VIDEO_ID, "testcpn00001"
             )
         }
@@ -112,7 +108,7 @@ class SongPlaybackTest {
         val status = response.getObject( "playabilityStatus" ).getString( "status" )
         assertEquals(
             "OK", status,
-            "ANDROID_VR could not play $VIDEO_ID (status=$status, " +
+            "VISIONOS could not play $VIDEO_ID (status=$status, " +
             "reason=${response.getObject( "playabilityStatus" ).getString( "reason" )})"
         )
 
@@ -122,14 +118,14 @@ class SongPlaybackTest {
     }
 
     /**
-     * The ANDROID_VR client resolves the video to a direct (pre-signed) audio url.
+     * The VISIONOS client resolves the video to a direct (pre-signed) audio url.
      */
     @Test
-    fun androidVrResolvesPlayableStream() {
+    fun visionOsResolvesPlayableStream() {
         val audio = resolveAudioFormat()
         assertNotNull(
             audio.getString( "url" ),
-            "ANDROID_VR returned a ciphered url (signatureCipher) instead of a direct url"
+            "VISIONOS returned a ciphered url (signatureCipher) instead of a direct url"
         )
     }
 
@@ -176,24 +172,24 @@ class SongPlaybackTest {
     private inner class Client( val name: String, val resolve: () -> Candidate? )
 
     /**
-     * Mirrors `InnertubeResolvingDataSource`'s order: VR first (pot-free, no cipher), then
+     * Mirrors `InnertubeResolvingDataSource`'s order: VISIONOS first (pot-free, no cipher), then
      * IOS, then the plain ANDROID client's progressive itag 18/22 muxed format.
      */
     private val chain by lazy {
         listOf(
-            Client( "ANDROID_VR" ) {
+            Client( "VISIONOS" ) {
                 // Deliberately does not reuse resolveAudioFormat(): that one asserts, which is
-                // right for androidVrResolvesPlayableStream but wrong here, where an UNPLAYABLE
-                // VR response must fall through to the next client instead of failing the test.
+                // right for visionOsResolvesPlayableStream but wrong here, where an UNPLAYABLE
+                // VISIONOS response must fall through to the next client instead of failing the test.
                 val response = overNetwork {
-                    AndroidVrStreamHelper.getAndroidVrPlayerResponse(
+                    VisionOsStreamHelper.getVisionOsPlayerResponse(
                         ContentCountry.DEFAULT, Localization.DEFAULT, VIDEO_ID, "testcpn00001"
                     )
                 }
                 if( response.getObject( "playabilityStatus" ).getString( "status" ) != "OK" )
                     return@Client null
 
-                adaptiveCandidate( bestAudioFormat( response ) ?: return@Client null, VR_USER_AGENT )
+                adaptiveCandidate( bestAudioFormat( response ) ?: return@Client null, VisionOsStreamHelper.USER_AGENT )
             },
             Client( "IOS" ) {
                 val response = overNetwork {
