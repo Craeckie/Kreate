@@ -16,7 +16,10 @@ import app.kreate.android.service.innertube.AndroidStreamHelper
 import app.kreate.android.service.innertube.VisionOsStreamHelper
 import app.kreate.android.utils.CharUtils
 import app.kreate.android.utils.ConnectivityUtils
+import app.kreate.android.utils.ProxyExhaustedException
+import app.kreate.android.utils.ProxyManager
 import app.kreate.android.utils.innertube.CURRENT_LOCALE
+import app.kreate.android.utils.retryAcrossProxies
 import app.kreate.database.models.Format
 import co.touchlab.kermit.Logger
 import com.grack.nanojson.JsonWriter
@@ -56,6 +59,7 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerMana
 import org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper
 import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
 import com.metrolist.music.utils.potoken.PoTokenGenerator
+import java.io.IOException
 import java.net.UnknownHostException
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.time.Duration.Companion.hours
@@ -389,7 +393,7 @@ private suspend fun fallbackOrThrow(
 ): StreamCache {
     if( depth >= MAX_FALLBACK_DEPTH ) {
         logger.w { "Resolver chain for $songId exceeded $MAX_FALLBACK_DEPTH hops; giving up" }
-        throw UnplayableException( "resolver chain exhausted" )
+        throw ProxyExhaustedException( UnplayableException( "resolver chain exhausted" ) )
     }
 
     var next = nextFallback( method, failure, hadPoToken = poToken != null )
@@ -409,7 +413,7 @@ private suspend fun fallbackOrThrow(
         when( failure ) {
             is RungFailure.UrlRejected -> {
                 logger.w { "${methodName(method)} url for $songId failed validation; no rung left, marking unplayable" }
-                throw UnplayableException( "Stream url unplayable (blocked past teaser)" )
+                throw ProxyExhaustedException( UnplayableException( "Stream url unplayable (blocked past teaser)" ) )
             }
             is RungFailure.Threw -> {
                 val e = failure.cause
@@ -428,6 +432,11 @@ private suspend fun fallbackOrThrow(
                         logger.e( "", e )
                     }
                 }
+                // An IOException here is plausibly the active proxy being blocked (e.g. a
+                // connect failure against it) rather than a fatal/content error — let
+                // retryAcrossProxies decide whether to switch proxies and retry.
+                if( e is IOException )
+                    throw ProxyExhaustedException(e)
                 throw e
             }
         }
@@ -475,7 +484,15 @@ private fun getPlayableUrl( songId: String ): StreamCache = runBlocking( Dispatc
         val isConnectionMetered = connManager?.isActiveNetworkMetered ?: false
         val audioQuality by Preferences.AUDIO_QUALITY
 
-        makeStreamCache( songId, isConnectionMetered, audioQuality )
+        retryAcrossProxies(
+            proxyCount = ProxyManager.list().size,
+            activeIndex = ProxyManager::activeIndex,
+            switch = ProxyManager::switchToNextProxy
+        ) {
+            // Each retry starts fresh at the default rung — a proxy switch invalidates
+            // whatever partial fallback progress the previous attempt made.
+            makeStreamCache( songId, isConnectionMetered, audioQuality )
+        }
     }
 }
 //</editor-fold>

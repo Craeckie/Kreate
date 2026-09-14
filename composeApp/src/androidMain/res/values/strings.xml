@@ -208,6 +208,10 @@
     <string name="proxy_mode">Proxy Mode</string>
     <string name="proxy_host">Proxy Host</string>
     <string name="proxy_port">Proxy Port</string>
+    <string name="proxy_list">Proxies</string>
+    <string name="add_proxy">Add proxy</string>
+    <string name="remove_proxy_confirmation">Remove this proxy?</string>
+    <string name="no_proxies_configured">No proxies configured</string>
     <string name="update_title">Change Title</string>
     <string name="update_authors">Change Authors name</string>
     <string name="update_cover">Change Cover</string>

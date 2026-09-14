@@ -8,18 +8,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.kreate.android.Preferences
 import app.kreate.android.R
 import app.kreate.android.enums.DohServer
 import app.kreate.android.utils.ProxyManager
+import app.kreate.android.themed.common.component.settings.ProxyListDialog
 import app.kreate.android.themed.common.component.settings.SettingComponents
 import app.kreate.android.themed.common.component.settings.SettingEntrySearch
 import app.kreate.android.themed.common.component.settings.animatedEntry
@@ -31,11 +33,9 @@ import it.fast4x.rimusic.ui.styling.Dimensions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import me.knighthat.component.dialog.InputDialogConstraints
 import me.knighthat.utils.Toaster
 import okhttp3.Dns
 import org.koin.java.KoinJavaComponent.inject
-import java.net.Proxy
 
 @Composable
 fun NetworkSettings( paddingValues: PaddingValues ) {
@@ -44,6 +44,7 @@ fun NetworkSettings( paddingValues: PaddingValues ) {
     val search = remember {
         SettingEntrySearch( scrollState, R.string.tab_network, R.drawable.app_icon_monochrome )
     }
+    var showProxyListDialog by remember { mutableStateOf( false ) }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -76,34 +77,10 @@ fun NetworkSettings( paddingValues: PaddingValues ) {
                 modifier = Modifier.padding( start = 25.dp )
             ) {
                 Column {
-                    if( search appearsIn R.string.proxy_mode )
-                        SettingComponents.EnumEntry(
-                            Preferences.PROXY_SCHEME,
-                            R.string.proxy_mode,
-                            {
-                                when( it ) {
-                                    Proxy.Type.DIRECT -> stringResource( R.string.proxy_mode_direct )
-                                    else              -> it.name
-                                                           .lowercase()
-                                                           .replaceFirstChar( Char::uppercase )
-                                }
-                            }
-                        )
-
-                    if( search appearsIn R.string.proxy_host )
-                        SettingComponents.InputDialogEntry(
-                            preference = Preferences.PROXY_HOST,
-                            titleId = R.string.proxy_host,
-                            constraint = InputDialogConstraints.ALL,
-                            keyboardOption = KeyboardOptions(keyboardType = KeyboardType.Uri)
-                        )
-
-                    if( search appearsIn R.string.proxy_port )
-                        SettingComponents.InputDialogEntry(
-                            preference = Preferences.PROXY_PORT,
-                            titleId = R.string.proxy_port,
-                            constraint = InputDialogConstraints.POSITIVE_INTEGER,
-                            keyboardOption = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    if( search appearsIn R.string.proxy_list )
+                        SettingComponents.Text(
+                            title = stringResource( R.string.proxy_list ),
+                            onClick = { showProxyListDialog = true }
                         )
 
                     if( search appearsIn R.string.setting_entry_test_proxy )
@@ -149,4 +126,7 @@ fun NetworkSettings( paddingValues: PaddingValues ) {
             }
         }
     }
+
+    if( showProxyListDialog )
+        ProxyListDialog( onDismiss = { showProxyListDialog = false } )
 }

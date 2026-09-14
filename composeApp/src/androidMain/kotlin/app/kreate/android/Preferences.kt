@@ -713,6 +713,17 @@ sealed class Preferences<T>(
         val PROXY_PORT  by lazy {
             Int( preferences, Key.PROXY_PORT , "proxyPort", 1080 )
         }
+        /**
+         * JSON-encoded `List<`[app.kreate.android.utils.ProxyEntry]`>`. Read/write through
+         * [app.kreate.android.utils.ProxyManager], not directly — it owns encode/decode and
+         * the one-shot [PROXY_HOST] migration gated on this key's absence.
+         */
+        val PROXY_LIST by lazy {
+            String( preferences, Key.PROXY_LIST, "", "[]" )
+        }
+        val PROXY_ACTIVE_INDEX by lazy {
+            Int( preferences, Key.PROXY_ACTIVE_INDEX, "", 0 )
+        }
         //</editor-fold>
         //<editor-fold defaultstate="collapsed" desc="DoH">
         val DOH_SERVER by lazy {
@@ -1890,6 +1901,8 @@ sealed class Preferences<T>(
         const val PROXY_SCHEME = "ProxyScheme"
         const val PROXY_HOST = "ProxyHost"
         const val PROXY_PORT  = "ProxyPort"
+        const val PROXY_LIST = "ProxyList"
+        const val PROXY_ACTIVE_INDEX = "ProxyActiveIndex"
         const val DOH_SERVER = "DnsOverHttpsServer"
         const val CUSTOM_LIGHT_THEME_BACKGROUND_0 = "CustomLightThemeBackground0"
         const val CUSTOM_LIGHT_THEME_BACKGROUND_1 = "CustomLightThemeBackground1"
