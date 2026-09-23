@@ -123,9 +123,8 @@ jobs:
     env:
       BUILD_DATE: ${{ needs.build_time.outputs.dot_date }}
       OFFICIAL_BUILD_PASSPHRASE: ${{ secrets.OFFICIAL_BUILD_PASSPHRASE }}
-      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_ALIAS: my-key
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     strategy:
       matrix:
