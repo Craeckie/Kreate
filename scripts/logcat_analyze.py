@@ -27,6 +27,8 @@ RE_TS = re.compile(r"(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
 # YouTube video IDs are exactly 11 chars of [A-Za-z0-9_-]; used to pull the id
 # out of a matched line's capture groups (client names / ranges / reasons won't match).
 RE_VID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+# YouTube's "Sign in to confirm you're not a bot" (reason is localised via hl, hence the bare word).
+RE_BOT = re.compile(r"\bbots?\b", re.IGNORECASE)
 
 PATTERNS = [
     # YTPlayerUtils info/debug (metrolist path — kept for compatibility with older builds)
@@ -47,6 +49,8 @@ PATTERNS = [
     ("vr_fallback",        re.compile(r"(\S+) failed for (\S+) \(([^)]+)\); trying (\S+)")),
     ("range_rejected",     re.compile(r"Stream url range (\S+) rejected: HTTP (\d+)")),
     ("marking_unplayable", re.compile(r"(\S+) stream url for (\S+) failed validation")),
+    ("login_exhausted",    re.compile(r"LOGIN_REQUIRED on last rung for (\S+) \((.*)\); handing to proxy rotation")),
+    ("proxy_switch",       re.compile(r"Switching active proxy: index (-?\d+) -> (-?\d+)")),
     ("unplayable_exc",     re.compile(r"UnplayableException: (.+)")),
     ("rematch_attempt",    re.compile(r"Song unplayable \(([^)]+)\); attempting rematch for (\S+)")),
     ("rematch_search",     re.compile(r"Rematch(?:.*)?: searching replacement for (\S+) \((.+)\)")),
@@ -209,6 +213,32 @@ def analyze(lines, filter_video=None, verbose=False):
         issues.append(f"  [INFO] resolver fell back {counts['vr_fallback']}x ({summary}) "
                       f"— a rung failed and the chain moved on")
 
+    # IP flagged: the chain ran out on a "not a bot" LOGIN_REQUIRED. Newer builds log it
+    # (login_exhausted); older ones only show a bot-reason hop into ANDROID that ANDROID
+    # did not resolve.
+    flagged = defaultdict(int)
+    for _, t, g, _ in events:
+        if t == "login_exhausted" and RE_BOT.search(g[1]):
+            flagged[g[0]] += 1
+    if not counts["login_exhausted"]:
+        android_resolved = defaultdict(int)
+        for _, t, g, _ in events:
+            if t == "vr_resolved" and g[1] == "ANDROID":
+                android_resolved[g[0]] += 1
+        for _, t, g, _ in events:
+            if (t == "vr_fallback" and g[3] == "ANDROID"
+                    and "LoginRequiredException" in g[2] and RE_BOT.search(g[2])):
+                flagged[g[1]] += 1
+        for vid, n in android_resolved.items():
+            flagged[vid] -= n
+    flagged = {v: n for v, n in flagged.items() if n > 0}
+    if flagged:
+        vids = ", ".join(f"{v}×{n}" for v, n in sorted(flagged.items()))
+        switches = counts["proxy_switch"]
+        issues.append(f"  [WARN] IP flagged by bot check ({vids}) — every rung got LOGIN_REQUIRED "
+                      f"'confirm you're not a bot'; another exit fixes it. Proxy switches seen: "
+                      f"{switches}{'' if switches else ' (no proxies configured, or a build before the fix)'}")
+
     if counts["marking_unplayable"]:
         vids = sorted({g[1] for _, t, g, _ in events if t == "marking_unplayable" and len(g) > 1})
         issues.append(f"  [WARN] IOS stream teaser-blocked → marked unplayable "
@@ -272,6 +302,7 @@ def analyze(lines, filter_video=None, verbose=False):
         "vr_fallback", "range_rejected", "marking_unplayable", "unplayable_exc",
         "rematch_attempt", "rematch_search", "rematch_strong", "rematch_weak",
         "rematch_none", "got_403", "http_403_persisted",
+        "login_exhausted", "proxy_switch",
         # song-info parse + image loading + UI
         "songinfo_upsert_fail", "missing_field", "image_null",
         "thumb_oversized", "changelog_crash",

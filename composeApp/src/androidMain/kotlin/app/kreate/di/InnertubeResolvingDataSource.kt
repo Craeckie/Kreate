@@ -59,7 +59,6 @@ import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerMana
 import org.schabi.newpipe.extractor.services.youtube.YoutubeStreamHelper
 import org.schabi.newpipe.extractor.services.youtube.PoTokenResult
 import com.metrolist.music.utils.potoken.PoTokenGenerator
-import java.io.IOException
 import java.net.UnknownHostException
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.time.Duration.Companion.hours
@@ -432,11 +431,14 @@ private suspend fun fallbackOrThrow(
                         logger.e( "", e )
                     }
                 }
-                // An IOException here is plausibly the active proxy being blocked (e.g. a
-                // connect failure against it) rather than a fatal/content error — let
-                // retryAcrossProxies decide whether to switch proxies and retry.
-                if( e is IOException )
+                // A blocked proxy (IOException) or a flagged IP (LOGIN_REQUIRED "not a bot")
+                // rather than a fatal/content error — let retryAcrossProxies decide whether
+                // to switch proxies and retry.
+                if( isProxyPlausible( e ) ) {
+                    if( e is LoginRequiredException )
+                        logger.i { "LOGIN_REQUIRED on last rung for $songId (${e.message}); handing to proxy rotation" }
                     throw ProxyExhaustedException(e)
+                }
                 throw e
             }
         }

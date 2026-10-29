@@ -45,6 +45,7 @@ import app.kreate.android.R
 import app.kreate.android.coil3.ImageFactory
 import app.kreate.android.service.player.StatefulPlayer
 import app.kreate.android.utils.isLocal
+import app.kreate.di.isBotCheck
 import co.touchlab.kermit.Logger
 import it.fast4x.rimusic.Database
 import it.fast4x.rimusic.colorPalette
@@ -104,6 +105,7 @@ fun Thumbnail(
         stringResource(R.string.error_the_original_video_source_of_this_song_has_been_deleted)
     val songnotplayabledueserverrestrictionerror =
         stringResource(R.string.error_this_song_cannot_be_played_due_to_server_restrictions)
+    val botcheckerror = stringResource(R.string.error_youtube_flagged_network_as_bot)
     val videoidmismatcherror =
         stringResource(R.string.error_the_returned_video_id_doesn_t_match_the_requested_one)
     val unknownplaybackerror =
@@ -366,7 +368,9 @@ fun Thumbnail(
                             is UnresolvedAddressException, is UnknownHostException -> networkerror
                             is PlayableFormatNotFoundException -> notfindplayableaudioformaterror
                             is UnplayableException -> originalvideodeletederror
-                            is LoginRequiredException -> songnotplayabledueserverrestrictionerror
+                            is LoginRequiredException ->
+                                if (isBotCheck(err.cause?.cause)) botcheckerror
+                                else songnotplayabledueserverrestrictionerror
                             is VideoIdMismatchException -> videoidmismatcherror
                             is PlayableFormatNonSupported -> formatUnsupported
                             is NoInternetException -> nointerneterror

@@ -27,6 +27,7 @@ import androidx.media3.common.util.UnstableApi
 import app.kreate.android.R
 import app.kreate.android.service.player.StatefulPlayer
 import app.kreate.android.utils.isLocal
+import app.kreate.di.isBotCheck
 import co.touchlab.kermit.Logger
 import it.fast4x.rimusic.service.FakeException
 import it.fast4x.rimusic.service.LoginRequiredException
@@ -64,6 +65,7 @@ fun PlayerError(
     //val songnotplayabledueserverrestrictionerror =
     //    stringResource(R.string.error_this_song_cannot_be_played_due_to_server_restrictions)
     val loginrequirederror = stringResource(R.string.login_required_to_play_this_media)
+    val botcheckerror = stringResource(R.string.error_youtube_flagged_network_as_bot)
     val videoidmismatcherror =
         stringResource(R.string.error_the_returned_video_id_doesn_t_match_the_requested_one)
     //val unknownplaybackerror =
@@ -88,7 +90,8 @@ fun PlayerError(
                 is UnresolvedAddressException, is UnknownHostException -> networkerror
                 is PlayableFormatNotFoundException -> notfindplayableaudioformaterror
                 is UnplayableException -> unplayableerror
-                is LoginRequiredException -> loginrequirederror
+                is LoginRequiredException ->
+                    if (isBotCheck(error.cause?.cause)) botcheckerror else loginrequirederror
                 is VideoIdMismatchException -> videoidmismatcherror
                 is PlayableFormatNonSupported -> formatUnsupported
                 is NoInternetException -> nointerneterror

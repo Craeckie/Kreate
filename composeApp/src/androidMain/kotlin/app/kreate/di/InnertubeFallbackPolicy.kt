@@ -1,6 +1,7 @@
 package app.kreate.di
 
 import it.fast4x.rimusic.service.LoginRequiredException
+import java.io.IOException
 
 
 internal const val METHOD_VISIONOS = 0
@@ -44,3 +45,19 @@ internal fun nextFallback(method: Int, failure: RungFailure, hadPoToken: Boolean
         else -> null   // ANDROID progressive is the last rung, whatever went wrong
     }
 }
+
+/**
+ * Whether a failure that exhausted the whole chain is plausibly caused by the active proxy (or
+ * the device's own IP), so that switching to another proxy may fix it. [IOException] covers a
+ * blocked or dead proxy; [LoginRequiredException] covers YouTube's "confirm you're not a bot" IP
+ * flag, which every client reports alike and another exit clears. Any LOGIN_REQUIRED counts, not
+ * only bot checks: the reason is localised, and an age gate costs at most one pass per proxy.
+ */
+internal fun isProxyPlausible(e: Throwable): Boolean =
+    e is IOException || e is LoginRequiredException
+
+private val BOT_WORD = Regex("""\bbots?\b""", RegexOption.IGNORE_CASE)
+
+/** Whether [e] is YouTube's "Sign in to confirm you're not a bot" — an IP flag, not a content gate. */
+internal fun isBotCheck(e: Throwable?): Boolean =
+    e is LoginRequiredException && e.message?.let { BOT_WORD.containsMatchIn(it) } == true
