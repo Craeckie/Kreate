@@ -1,0 +1,9 @@
+## 🐛 Fixes
+- ▶️ **Playback** — songs that refused to play (endless loading, "not a bot" errors) play again: a new YouTube client is tried first, and the resolver no longer loops between clients
+- 🌐 **Proxies** — you can now configure several proxies; the app switches to the next one automatically when one fails or YouTube flags it as a bot
+- 💬 Clearer message when YouTube blocks your connection as a bot
+
+## 🔧 Changes
+- 🧱 Updated the YouTube extraction library
+
+**Full Changelog**: https://github.com/Craeckie/Kreate/compare/v2.2.3-1...v2.2.3-2
