@@ -46,7 +46,7 @@ PATTERNS = [
     ("vr_method",          re.compile(r"Getting online stream url for \"(\S+)\" with method (\S+)")),
     ("unavailable",        re.compile(r"Playability status not OK.*This video is unavailable")),
     # current fallback/validation/rematch flow (InnertubeResolvingDataSource + StatefulPlayerImpl)
-    ("vr_fallback",        re.compile(r"(\S+) failed for (\S+) \(([^)]+)\); trying (\S+)")),
+    ("vr_fallback",        re.compile(r"(\S+) failed for (\S+) \(([^)]+)\); (?:trying|falling back to) (\S+)")),
     ("range_rejected",     re.compile(r"Stream url range (\S+) rejected: HTTP (\d+)")),
     ("marking_unplayable", re.compile(r"(\S+) stream url for (\S+) failed validation")),
     ("login_exhausted",    re.compile(r"LOGIN_REQUIRED on last rung for (\S+) \((.*)\); handing to proxy rotation")),
